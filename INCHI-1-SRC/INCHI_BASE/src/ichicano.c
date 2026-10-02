@@ -43,10 +43,12 @@
 #include <string.h>
 #include <ctype.h>
 #include <time.h>
-#include <sys/timeb.h>
 #include <limits.h>
 
 #include "mode.h"
+#ifndef COMPILE_ANSI_ONLY
+#include <sys/timeb.h>
+#endif
 #include "ichicano.h"
 
 #include "ichitime.h"

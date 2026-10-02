@@ -1,0 +1,250 @@
+# SHA-256 of every upstream file this package ships — two of which this fork
+# patched on purpose, as the header records below — plus the independent fixture
+# its tests read, from IUPAC/InChI v1.07.5 (tag v1.07.5, commit
+# 11a87982bb518f57ac013f0b258c283655e1ea1d,
+# https://github.com/IUPAC/InChI.git).
+#
+# 109 records:
+#
+#   105 files   the two upstream-owned directories of build.zig.zon `.paths`,
+#               INCHI-1-SRC/INCHI_BASE/src (86 files) and
+#               INCHI-1-SRC/INCHI_API/libinchi/src (19 files). This is the
+#               complete compile unit list of that CMake target plus every
+#               header reached from them by #include, the two public headers
+#               that are installed (inchi_api.h, ixa.h), the bundled stb_sprintf
+#               1.10, the SHA-256 implementation, and upstream's own
+#               CMakeLists.txt for the target. It is a subset of the upstream
+#               tree, not a copy of it: upstream also ships the inchi-1
+#               executable, the demos, the vc14 and gcc project files, the
+#               documentation and the test distribution, none of which this
+#               package builds or needs.
+#
+#   103 files   of those 105 are upstream's own bytes, byte for byte.
+#     2 files    INCHI-1-SRC/INCHI_BASE/src/ichiparm.c and
+#               INCHI-1-SRC/INCHI_BASE/src/ichicano.c, which this fork edited
+#               once each, on purpose, and discloses here.
+#
+#     1 file    ichiparm.c. The patch is nine inserted lines -- a seven-line
+#               disclosure comment and two string-literal macros -- plus three
+#               changed lines: two banner arguments in HelpCommandLineParms
+#               where the compiler's build-date and build-time macros were, now
+#               the pinned source tag and a literal no-timestamp string, and one
+#               existing comment line whose format string held an accidental
+#               nested-comment delimiter. The diagnostics that prompted it were
+#               fixed at their cause; nothing was suppressed, no flag was added,
+#               and no chemistry, ABI, allocator, option or timeout behaviour was
+#               touched. Upstream's digest for this file,
+#               eb3516115a1d25776f823de800d1c61cf0161e5bedbecac3511cd21ec0de2478,
+#               is preserved in UPSTREAM.md as the baseline the patch is
+#               measured against; the record below is of this fork's bytes,
+#               because those are the bytes the build compiles.
+#
+#     1 file    ichicano.c. The patch moves the file's `#include
+#               <sys/timeb.h>` below `#include "mode.h"` and wraps it in
+#               `#ifndef COMPILE_ANSI_ONLY` / `#endif`. Compared with upstream,
+#               those two guard lines add 33 bytes. Compared with the first
+#               guard version, only placement changes: the file stays 107427
+#               bytes and no line number from line 53 down moves.
+#               Placement is the patch. `mode.h:197-201` defines
+#               COMPILE_ANSI_ONLY itself for every non-Microsoft compiler and
+#               for TARGET_API_LIB, so a guard read above `#include "mode.h"`
+#               sees the macro still undefined and includes the header anyway;
+#               that was the defect in the first version of this patch, and the
+#               file failed to preprocess with `-DTARGET_API_LIB=1` and
+#               succeeded with `-DCOMPILE_ANSI_ONLY=1`
+#               (local://foundation-cross-test-inchi-guard.json). The header is
+#               not missing from every non-Windows libc: of seven probes
+#               (local://foundation-cross-test-timeb-header-availability.json)
+#               it is present on x86_64-linux-gnu, x86_64-linux-musl,
+#               x86_64-netbsd and wasm32-wasi, present on aarch64-freebsd with a
+#               deprecation warning, and absent only on aarch64-macos and
+#               x86_64-openbsd. The whole translation unit that uses it -
+#               InchiTimeGet and bInchiTimeIsOver, the only two readers of
+#               `struct _timeb` and `_ftime`, at pre-patch lines 332-335 and
+#               395-402 - sits in the `#else` arm of this same file's
+#               `#ifdef COMPILE_ANSI_ONLY` at pre-patch line 95, so the guard
+#               removes a header nothing in that configuration uses and changes
+#               no compiled token in any other one. Upstream's own header
+#               agrees: ichitime.h:56 carries the same include commented out
+#               under the same macro. Upstream's digest for this file,
+#               5c031a2b441dc08509f75fe22e4b6ecddf285ada625b4a69cf77d2920d42f891,
+#               is preserved in UPSTREAM.md as the baseline; the record below is
+#               of this fork's bytes, because those are the bytes the build
+#               compiles.
+#
+#     1 file    LICENSE, the MIT text, verbatim.
+#     1 file    README.md, upstream's own project README, verbatim.
+#     1 file    INCHI-1-SRC/INCHI_API/tbb/LICENSE, upstream's full Apache-2.0
+#               terms for the uncompiled proxy header shipped with the source.
+#     1 file    testdata/pubchem_known_answers.tsv, the independent known
+#               answers. Not upstream's and not this fork's: every field was
+#               read out of PubChem's own compound records, queried one CID at
+#               a time through the PUG REST property endpoint, as the file's
+#               own header records. It is hashed here because the tests embed
+#               it and a silent edit to it would move every published
+#               expectation in the package at once.
+#
+# Deliberately absent, each for a stated reason:
+#   build.zig, build.zig.zon, translate.h, zig/, tests.zig, smoke.zig,
+#   cross-test.profile.sh, consumer/ and UPSTREAM.md, NOTICE.md, CHANGELOG.md,
+#   FORK-NOTES.md, README.zig.md -- this fork's own files, listed in NOTICE.md.
+#   .gitignore -- upstream's ignore rules are kept verbatim and this fork
+#   appends its own Zig entries below them, so the file is not byte-identical
+#   to upstream's.
+#   .github/, .devcontainer/, .editorconfig, .gitattributes, .dockerignore,
+#   Doxyfile, INCHI-1-DOC/, INCHI-1-TEST/ and the whole of INCHI-1-SRC except
+#   the two src directories and INCHI-1-SRC/INCHI_API/tbb/LICENSE -- carried
+#   in this repository for provenance and re-sync diffs, and not in `.paths`.
+#   UPSTREAM.sha256 itself -- a record cannot contain its own digest.
+#
+# These are the bytes in this working tree, hashed as a raw byte read (Bun
+# File.arrayBuffer, SHA-256 from node:crypto). They are not a signature and not
+# a Git object id: see UPSTREAM.md, "Integrity", for what they do and do not
+# establish.
+#
+# Provenance of the numbers: the 108 records other than the ichiparm.c line were
+# written on 2026-10-01, and every one of them was re-derived from this written
+# file and compared against it, 108 of 108 matching. The 109th line, the
+# Apache-2.0 text, was added afterwards. The ichiparm.c line is the one record
+# the first disclosed patch changed: it was re-derived from the patched file's own
+# bytes, and then all 109 records were re-derived from disk and compared
+# against this file, with that line and no other differing.
+#
+# The ichicano.c line changed twice. The first change wrapped the include in
+# `#ifndef COMPILE_ANSI_ONLY` where the file had it, above `#include "mode.h"`,
+# which guarded nothing: mode.h defines the macro later in the same
+# translation unit, so the include was still processed and the macOS cell still
+# failed. The line was then re-derived from the reordered file's own bytes.
+# The upstream baseline it is measured against was re-derived in the same pass,
+# by deleting the three guard lines and restoring the include at upstream's own
+# position 46: the result hashes to the 5c031a2b… digest quoted above, and it is
+# 107394 bytes, so the 107427 the record names adds exactly 33 guard bytes.
+# The two-source patch shape and the 109 paths remain unchanged.
+# The ichiparm.c disclosure comment was clarified in three existing lines;
+# its new digest below covers 111263 bytes. Source-line count and every
+# noncomment byte are unchanged, observed in the external comment-only proof.
+# Current source/fetched replay status is driver-owned under
+# FORKS.json.cross_test_wave.materialized_packages.inchi.
+#
+# `sha256sum -c UPSTREAM.sha256` was green over all 109 of these bytes in two
+# receipts, and both of them are history for this file now: each verified the
+# `ichicano.c` line as it stood before the guarded include described above.
+#   local://foundation-expansion-inchi-authorized-patch-integrity-109-364.log
+#     exit 0, 109 records, 109 ": OK", no failures
+#   local://foundation-expansion-inchi-current-filtered-package-integrity-388.log
+#     exit 0, 109 records, 109 ": OK", no failures, over the .paths-filtered
+#     copy materialised from a current `zig fetch` of this package
+# The pre-patch receipts (…-240 over 109 records, …-221 and …-127 over 108)
+# remain history; their ichiparm.c lines verified upstream's bytes, which this
+# record no longer names.
+#
+# Verify with:  sha256sum -c UPSTREAM.sha256
+02d871c931960d04c5a3d2db969e44ef0c501f7aeee1856af8498be7659d4909  INCHI-1-SRC/INCHI_API/libinchi/src/CMakeLists.txt
+5540cd6eaca6fa56be87f8642a2645c6fd41cf034cea1abde3f066a7022b79cd  INCHI-1-SRC/INCHI_API/libinchi/src/ichilnct.c
+c62de5b2c80e57a8ad99a7426429ee4c63da09d7ee826491db6746feabb30fcf  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll.c
+06ebad8990df2d23734c8001b60d6accb327f559566da1543e74919fef757a61  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll.h
+4d566cc88b74dfc27b0e05b0dd34c2c2771cf02825374128c2126d9b144ee916  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll_a.c
+fb5b5d178c41a1fc5b558cb2ec6f1fbb222f80eab427e2afbb499f3edd76813d  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll_a.h
+03bd14b8d158baccda20e461376ea7e9be29b8a1e6f388a95925bd2199f132ff  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll_a2.c
+42832aec3c7bf68f2fb41509259a5dde0c34739817d6de8f3035677513606b95  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll_b.c
+924b2f4a4045894e85e82dea40cdbeb6fa54afe54d8298b0ac18aae44a9a892d  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll_b.h
+f53dcd153b154c1290c99968ad33e8f3f4cba353364fbb4daa8e4fbb29f8e9a2  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll_main.c
+35897fd56cbf7f7675f771ce01ef00c83f49cab68ab54cac9b4b7a0303e0897b  INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll_main.h
+83d25cc8c2e7a38728822b761cd43cdf0da819f892b7cddea19ba93573a9f845  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_builder.c
+2f756f35438ffb8fef8eda53dfcc96cdf0dc4dc8924b1b590f9b8eb09f1cd0dd  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_inchikey_builder.c
+3c83c9bacea7b5ae615099906e2bd98469efa5e8cc40b4cb123ee95433d7d022  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_mol.c
+476d027832b826aee9765af353bed780856cb6898d1ccdf48f7d2e1c98508c02  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_mol.h
+6ff9d24bd2fa7bb4f2eda30e2742f097036b330453be18a790b7708b662c4584  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_read_inchi.c
+6b31adb9b73fb90aa57f8efc635ce6f5251870bf9701795191cd81faae3743c2  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_read_mol.c
+eef93a9089ddc70e685eddf67ee31923d0fd2b469c90cf98303149e6dd9f970f  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_status.c
+8105f8c42464258184cba2491379553be91485c5d03683767dbcfb4c1ec9ea11  INCHI-1-SRC/INCHI_API/libinchi/src/ixa/ixa_status.h
+73421e1e60c16168f2434fd161f6e5fe8076c2bc73626604649771075c321f00  INCHI-1-SRC/INCHI_BASE/src/bcf_s.c
+d0b3391ae9eaac595260583423d222e990582aa70422a632c6d283e66e77fccd  INCHI-1-SRC/INCHI_BASE/src/bcf_s.h
+b6b070ba1ccb7a4a3330509588cabe81ece31a6917aee4c5a458cd282231993f  INCHI-1-SRC/INCHI_BASE/src/extr_ct.h
+89a04c51cda03d9c0174bcffe27b25071c187b3ca9131283d0689677a86ccd96  INCHI-1-SRC/INCHI_BASE/src/ichi.h
+5a7aa817de95a5997063a8e656865c773155972abd1e4bb806ef79597f2e31b5  INCHI-1-SRC/INCHI_BASE/src/ichi_bns.c
+4f1e3ba2ec516331b3f7eec028fdc1483a083ccaccbe531bdf08a4752d129e86  INCHI-1-SRC/INCHI_BASE/src/ichi_bns.h
+be9a6d153411a2f942c9ad3b0ac38f2048f2f06a621fd7e762056a6d6562d8da  INCHI-1-SRC/INCHI_BASE/src/ichi_io.c
+d7ee666e451c40864c8365d0b81701c8086a144da37866b0d608b079b84c5ffa  INCHI-1-SRC/INCHI_BASE/src/ichi_io.h
+de7acbbf8854e99170566df6ae8919b153c9cc4e26f4feaa0d4380e2c4ce613d  INCHI-1-SRC/INCHI_BASE/src/ichican2.c
+9a0998a3a41f62508e755d9411bf3c78b2b7b1ae63edcea7a40c55307130d98b  INCHI-1-SRC/INCHI_BASE/src/ichicano.c
+84f934616d2f288ed2008058f25d64133479d5263770761de4ab116e1134a736  INCHI-1-SRC/INCHI_BASE/src/ichicano.h
+5b283cd238532595ecb307be92421baf8972c13363d706c77dc51b3873011d57  INCHI-1-SRC/INCHI_BASE/src/ichicans.c
+88e5cb7099c4c5b87f412dc3c57938dfaaa98530598f7669b3ec0db269c9d4a1  INCHI-1-SRC/INCHI_BASE/src/ichicant.h
+0e0f77a091cb02e3b5432fbc87a0975d90a77d2a68dc9294ca3c7c0d1c2d1416  INCHI-1-SRC/INCHI_BASE/src/ichicomn.h
+b024175d71ecbbdd1dc27ef1b269b234551e879cd60846ef4a1d5bdd06333f08  INCHI-1-SRC/INCHI_BASE/src/ichicomp.h
+797aea36b66e329844467eb4913143a924c202f0f0756625f85600ba169959ab  INCHI-1-SRC/INCHI_BASE/src/ichidrp.h
+caff3030884ceec67cc6f7874d733323eabdae354d45e4676078f0aaf2641e7d  INCHI-1-SRC/INCHI_BASE/src/ichierr.c
+2ebac57b63901c2a5c9b896a00c781e1e837acadff183e8e84e00518a396c0e8  INCHI-1-SRC/INCHI_BASE/src/ichierr.h
+1c91df0d0bd75c7aaa46e0412c54520af9334be5fe519feaa65b5c5a18293ed3  INCHI-1-SRC/INCHI_BASE/src/ichiisot.c
+a85f0eb1b1d6ba87c3134dd01ae38bbb7af851df9d6eb46ca24f848dabced85b  INCHI-1-SRC/INCHI_BASE/src/ichimain.h
+adcbdc982203756612814a2487c11a82b249c380206d77efc196178c67ab611e  INCHI-1-SRC/INCHI_BASE/src/ichimak2.c
+67ec6ad2997c6719c1b03c6b0d2d1950351bd826c994bf5236b4c31f321179a2  INCHI-1-SRC/INCHI_BASE/src/ichimake.c
+36ae7263739ce817b9568b0b9b4bc45ba2fefa958f72eb3140693da751a6b29a  INCHI-1-SRC/INCHI_BASE/src/ichimake.h
+2a52d467c4d8f61aa278ac50426fb278be98070c569146c84224703a7a516a82  INCHI-1-SRC/INCHI_BASE/src/ichimap1.c
+267b7998db49746b424f3ac3709d062c686c2f1477d4b7cb562644b37d5f96c5  INCHI-1-SRC/INCHI_BASE/src/ichimap2.c
+980034d4bae298790166713a4bf618abd2e3aa6008419ad6eefbe2e898b76392  INCHI-1-SRC/INCHI_BASE/src/ichimap4.c
+12651563f801c12e8aa536aeddc59df5fbc349baa9f54e44430ebad02874cc07  INCHI-1-SRC/INCHI_BASE/src/ichinorm.c
+0cade36e50d77c8c0b1d0abb22ae7e80e807a508debd91e683e6b7ac489a2781  INCHI-1-SRC/INCHI_BASE/src/ichinorm.h
+74302e26597450060b8341a569f4fd8a07813aadce1f05e9b3507c34980cdd3a  INCHI-1-SRC/INCHI_BASE/src/ichiparm.c
+26a8ec0e42ded62a8fe888fa3dedebb236cf6e99423074e7731f79f9ff9a6f71  INCHI-1-SRC/INCHI_BASE/src/ichiprt1.c
+c68ebda5b94dcf614a856096c475c2557da387941edf0e86900653946d123ae0  INCHI-1-SRC/INCHI_BASE/src/ichiprt2.c
+8039384c43c3394f71fed73bf2b7e424f40c73661564668f09d642fc67a505ce  INCHI-1-SRC/INCHI_BASE/src/ichiprt3.c
+95d53b99da64628bc766e61a0cda776239b95040ec46486ff3d8297f08208ba9  INCHI-1-SRC/INCHI_BASE/src/ichiqueu.c
+85d23d8f53efdee82818b6b970218d0e0dce0d4df3b273dea255dfb2bdae4055  INCHI-1-SRC/INCHI_BASE/src/ichiread.c
+bfea21ff8230f9718a510b121f59a2c2e76f98fc6221168e3e00a72b6eb09c6b  INCHI-1-SRC/INCHI_BASE/src/ichiring.c
+b4058770f70d79e29a417659c2f0cc8a400a51d9de3ac4c05f45a409544df72c  INCHI-1-SRC/INCHI_BASE/src/ichiring.h
+12147060a88c50cd77bbf7b68b65b58c0712623cb2984a1d9356e632db1afb4a  INCHI-1-SRC/INCHI_BASE/src/ichirvr1.c
+da818dc91fca32e81b1cac2dd4e9a524b23788af9b4e1dfa5ba6bb89a0e29a61  INCHI-1-SRC/INCHI_BASE/src/ichirvr2.c
+a8d923a75e5bd5643398e8aed4710ab09a2954653205b67a274018f741ba78eb  INCHI-1-SRC/INCHI_BASE/src/ichirvr3.c
+a1979a5311e2aac802f19941ca71295211e34b3b904a0cfe47f413fe5ac8cb52  INCHI-1-SRC/INCHI_BASE/src/ichirvr4.c
+d80dc2591ae2a78fbbe31add1327c6d714b275f8555c001982bd2ad8b6532ee5  INCHI-1-SRC/INCHI_BASE/src/ichirvr5.c
+a67883c42a0298da72b4d91110ff4e920a8b54be2cd2229dd60a58f3503d9a98  INCHI-1-SRC/INCHI_BASE/src/ichirvr6.c
+2df80fe263e8accd8e86d26426d8f87a26d5ca9d11bffd6bc30300f8d125d9ab  INCHI-1-SRC/INCHI_BASE/src/ichirvr7.c
+255282617d5f1b2da425fee4186793b5b1321d12bb8d11b0c6f773b60f38a356  INCHI-1-SRC/INCHI_BASE/src/ichirvrs.h
+a0e8e67e84d4de5dbfac4be99a7e6f7ff8605c5dda59047501c89ded744d50fc  INCHI-1-SRC/INCHI_BASE/src/ichisize.h
+0eb5929b6f41dac9dfa8849774a33186096525abaddb7fdbf92e2af61c82196e  INCHI-1-SRC/INCHI_BASE/src/ichisort.c
+f11a061ca0d715238be57ecadd5239c9454a55864078e299d42a9d02cdbc6807  INCHI-1-SRC/INCHI_BASE/src/ichister.c
+4004db52c31ebc2a6aa5739f1e87466272aaaf6d7f2a46a19c9cfe988889f788  INCHI-1-SRC/INCHI_BASE/src/ichister.h
+726ab2a97ca89dbb1952693e826720dc81ba16dac1facd1d88a3451a94c88a0a  INCHI-1-SRC/INCHI_BASE/src/ichitaut.c
+e54e398dc0b3959d0b5f047e6a978fbb7806ffe6612191dbb8501b690841eb27  INCHI-1-SRC/INCHI_BASE/src/ichitaut.h
+a6250b0f65a407a472728c37f3b7436bbb7c308266a8712166bd63d8924a45a5  INCHI-1-SRC/INCHI_BASE/src/ichitime.h
+0e3893bfc3f218aa5574fa87ddbf7cbc5d2c997e398c57073c43b87ed867c056  INCHI-1-SRC/INCHI_BASE/src/ikey_base26.c
+614885ef4df91d6aabce1684c035f2fb1dd9dc6d58595bfb66ce9044ea440468  INCHI-1-SRC/INCHI_BASE/src/ikey_base26.h
+b68b0cc1a2e0d1df9a56a7e1232658b3faf4db026354237a9a5a8d514ac7c1d5  INCHI-1-SRC/INCHI_BASE/src/ikey_dll.c
+2d41d745be35a47853bf67fea03a46b1f518e85c42af9027a104662dbcb20116  INCHI-1-SRC/INCHI_BASE/src/inchi_api.h
+74c953eef7dcf7406eea4acd0dd093144c77e3eddd42c3740e3b2afe1548caef  INCHI-1-SRC/INCHI_BASE/src/inchi_gui.c
+a5dd42760bbb201c99d490d5241e8c79de751e3da4a4ba06eb53afea681c576f  INCHI-1-SRC/INCHI_BASE/src/inchi_gui.h
+7e6d71c688b71aca45e5528e73ee7ac5c986506725251b0a858fef2fec21f33d  INCHI-1-SRC/INCHI_BASE/src/inchicmp.h
+55fb469b3f9db723762eeaed7eb3b370720b939efe4b1d41c85ca2afd67da220  INCHI-1-SRC/INCHI_BASE/src/incomdef.h
+e84a29676dfd9f230bccb8dcab470689d854aacc4a94364013f1618a3149db48  INCHI-1-SRC/INCHI_BASE/src/inpdef.h
+d6938bd0fe77bf5db55286e4239e94b15afa076c2710443c579c59a3d4d054ad  INCHI-1-SRC/INCHI_BASE/src/ixa.h
+66861ab55c37a6ced40008b771a2aead72dc74449a67b6c32a0300c4179fcf72  INCHI-1-SRC/INCHI_BASE/src/logging.h
+cc8ee9dd79fd84ff8c29fc8ca4f49e8ef05e65191d2d6ffdf6e71a50bb92f74b  INCHI-1-SRC/INCHI_BASE/src/mode.h
+5f9464a5859ba45d7d71b14625eb65112f6ad457cd5659237e0802b0a3f7f371  INCHI-1-SRC/INCHI_BASE/src/mol2atom.c
+d266003f86c6193bca16ae821196aeae9409be7c1b7240a18519181ade67a16d  INCHI-1-SRC/INCHI_BASE/src/mol_fmt.h
+3178eb25d741811b204b8c267e6aa40a10c0756e93a8ca8bcda1821b5d794199  INCHI-1-SRC/INCHI_BASE/src/mol_fmt1.c
+726af201ce5ec744cc46b995950c4915fff76ca6cbc2d26d498b4dda83a93c5f  INCHI-1-SRC/INCHI_BASE/src/mol_fmt2.c
+0cce6926633f08b0fe3a861027ca404bf5074c2bf9e4533b52abc9cabab4b909  INCHI-1-SRC/INCHI_BASE/src/mol_fmt3.c
+80168c7e3e1aac1c86ab8d0701035a9f609419bd539f2449c1f147164d53ffe8  INCHI-1-SRC/INCHI_BASE/src/mol_fmt4.c
+75e8b56e02c35a47309fa6ec2bcc1090fb2edc877a60ee5a6dd99defddd961ec  INCHI-1-SRC/INCHI_BASE/src/permutation_util.c
+c4c48956badd3b167e422a5f7417e00ba2ab541fe2bb4b788931c6912048a633  INCHI-1-SRC/INCHI_BASE/src/permutation_util.h
+00d61e4b86ed3915e83f470cdea6ef02df4dfebb515ab094261f7dec10a0d919  INCHI-1-SRC/INCHI_BASE/src/readinch.c
+2560f1410486050dd6325dc34c1aa15f06cde8b9cc21b354e0088001c176aa84  INCHI-1-SRC/INCHI_BASE/src/readinch.h
+9cc0dc88de89ea84942fd2edbf32d655c38a10277c735006c245df6cfe10aae7  INCHI-1-SRC/INCHI_BASE/src/readme.txt
+8031a6976ee81bae6faedc1af5cd001f23c84f87091f70744ccf6d10ce713f66  INCHI-1-SRC/INCHI_BASE/src/runichi.c
+9e524cab94570d637412be10fd6df032695987bf8ab508c547a547ba4709764e  INCHI-1-SRC/INCHI_BASE/src/runichi2.c
+5ad7effb6d6d585b594d706365b8a04d069cce1c592f1a15c40207c62153ac8b  INCHI-1-SRC/INCHI_BASE/src/runichi3.c
+688e7285d550f0294cc86b6c3481e7efddc0afc2cbb114b02ff0e6ff193321fd  INCHI-1-SRC/INCHI_BASE/src/runichi4.c
+fa11f6747131f02bea136e313def99c4a3b71ca9b26c264704d2daa72db32f47  INCHI-1-SRC/INCHI_BASE/src/sha2.c
+df64363fac11cfb2ffd4ff93df2ef55c726fed3b31423fc7743bb4af7e890959  INCHI-1-SRC/INCHI_BASE/src/sha2.h
+e0b8c56e1084602290b9a17ef59f429b5293deb8cb9d8b0f20a14abc39b56520  INCHI-1-SRC/INCHI_BASE/src/stb_sprintf.h
+748fbbb2e017f1dce1234924d43480fdfbc62c3a3de55719321125e4997b2533  INCHI-1-SRC/INCHI_BASE/src/strutil.c
+8d569a441976ea4d8a831fa3cfdf22bd4ecd83294d4651155ccf22f43b340e14  INCHI-1-SRC/INCHI_BASE/src/strutil.h
+f14d067a402ff02e25d5eecc9ed1caa56594e7b4bbaf3a9d8b7b389d2c5cb65e  INCHI-1-SRC/INCHI_BASE/src/tbb/tbbmalloc_proxy.h
+bf8ca94d448490744cc452e2877a061c79de5352b0b27c38bd45c2fa2b24e4c8  INCHI-1-SRC/INCHI_BASE/src/util.c
+bcf6e00dd811609d7392e5f0fbd7b03ca722cb4c447bd4b5ee5d271e680235bf  INCHI-1-SRC/INCHI_BASE/src/util.h
+86ed3c36c70eb57826374cc14b199cae09fec201d07cd369a50fcaa9905244af  LICENSE
+90c885dabbed6b320728d8cc84fe30f0d323116213c77b6231950c90b80ba824  README.md
+e3fc60daa14a6079e7f6291c86175ee0e1ffd961c2c41b90d59b7c5bb7e5f6ed  testdata/pubchem_known_answers.tsv
+c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4  INCHI-1-SRC/INCHI_API/tbb/LICENSE

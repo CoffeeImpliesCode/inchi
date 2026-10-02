@@ -1,0 +1,65 @@
+.{
+    // This is the default name used by packages depending on this one.
+    .name = .inchi,
+    // Upstream's own full version string, INCHI_BASE/src/bcf_s.h:52:
+    //   #define CURRENT_VER "1.07.5"
+    // Semantic versions cannot hold the leading zero of "1.07", so the package
+    // version is 1.7.5 and build.zig compares it against the pinned release
+    // rather than against that string. There is no inchi_version.h: upstream
+    // has no generated version header at all, so none is invented here.
+    .version = "1.7.5",
+    // Identifies this package unambiguously. This fork is new, so the id was
+    // generated for it rather than inherited from an upstream Zig package;
+    // there is no upstream Zig package to be hostile about it. The value is
+    // the one the Zig 0.16.0 compiler reported for `.name = .inchi` with
+    // `.version = "1.7.5"`.
+    .fingerprint = 0x5a222f3bcf2e0653, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        // The translation wrapper. It carries the same TARGET_API_LIB and
+        // COMPILE_ANSI_ONLY macros the C core is compiled with and includes the
+        // complete public API header, which itself includes ixa.h.
+        "translate.h",
+        // The canonical upstream core, exactly where upstream keeps it. These
+        // two directories are the whole compile unit list of
+        // INCHI-1-SRC/INCHI_API/libinchi/src/CMakeLists.txt; nothing else in
+        // INCHI-1-SRC is referenced by that target, and nothing is generated,
+        // downloaded or copied at build time.
+        "INCHI-1-SRC/INCHI_BASE/src",
+        "INCHI-1-SRC/INCHI_API/libinchi/src",
+        // Full Apache-2.0 terms for the carried Intel TBB proxy header.
+        "INCHI-1-SRC/INCHI_API/tbb/LICENSE",
+        // The Zig facade, the shared molecule builders beside it, the
+        // behavioural tests and the smoke program. `zig` is listed as a
+        // directory, so `zig/molecules.zig` ships with the package even though
+        // `zig/root.zig` does not import it.
+        "zig",
+        "tests.zig",
+        "smoke.zig",
+        // cross-test reads this settings-only profile from the package root to
+        // drive `zig build test -Dtarget=TARGET` over the full published
+        // platform matrix. It is Bash, not documentation, so it is listed.
+        "cross-test.profile.sh",
+        // The independent fixture. `tests.zig` reaches it with
+        // `@embedFile("testdata/pubchem_known_answers.tsv")`, and the module
+        // root of a file at the package root is the package root, so a path
+        // entry that omits this directory excludes the oracle from the package
+        // hash while the test still needs it.
+        "testdata",
+        // The separate consumer package. It is inside this repository so the
+        // dependency it proves is a relative path that resolves without a
+        // network fetch or a registry entry.
+        "consumer",
+        "LICENSE",
+        "UPSTREAM.md",
+        "UPSTREAM.sha256",
+        "NOTICE.md",
+        "CHANGELOG.md",
+        "FORK-NOTES.md",
+        "README.md",
+        "README.zig.md",
+    },
+}

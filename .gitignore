@@ -29,3 +29,21 @@ googletest/
 core.*[0-9]
 CMake_build/
 INCHI-1-SRC/INCHI_API/libinchi/src/build/
+
+# ---- this fork's build outputs -------------------------------------------
+# Everything above is upstream's own ignore list, kept verbatim and in place:
+# none of it is removed to make room for the entries below, and none of it
+# swallows a file this fork adds. `build/` matches a directory named build, not
+# the build.zig file at the root or consumer/build.zig.
+#
+# `.zig-cache/` and `zig-out/` are directories rather than single files because
+# a normal user build creates both, and a normal user build must not dirty the
+# tree or leak into a package published from it.
+.zig-cache/
+zig-out/
+
+# The consumer package builds inside this repository and has its own output
+# tree. It is ignored here as well as in consumer/.gitignore so that a build
+# run from the repository root cannot commit it by accident.
+consumer/.zig-cache/
+consumer/zig-out/

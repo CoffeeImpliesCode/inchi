@@ -2594,7 +2594,7 @@ int PrintInputParms(INCHI_IOSTREAM* log_file,
         /*
         unsigned long seconds = ip->msec_MaxTime / 1000;
         unsigned long milliseconds = (ip->msec_MaxTime%1000);
-        inchi_ios_eprint( log_file, "Timeout per structure: %lu/*.%03lu sec\n", seconds, milliseconds); -- djb-rwth: ignoring LLVM warning
+        inchi_ios_eprint( log_file, "Timeout per structure: %lu.%03lu sec\n", seconds, milliseconds); -- djb-rwth: ignoring LLVM warning
         inchi_ios_eprint( log_file, "Timeout per structure: %lu sec\n", seconds );
         */
     }
@@ -2697,6 +2697,15 @@ int PrintInputParms(INCHI_IOSTREAM* log_file,
 
 
 /****************************************************************************/
+/* Downstream reproducibility modification. The portability include guard is in
+   ichicano.c. Upstream expanded the compiler's date and time
+   macros into the usage banner below, so the help text of two builds of these
+   same sources differed.  Both of the mutually exclusive branches now name the
+   pinned upstream source tag and say outright that no build time is recorded;
+   neither is a timestamp, and no other code in this file changed.  See
+   UPSTREAM.md, "The two patched source files". */
+#define INCHI_BUILD_SOURCE_TAG "v1.07.5"
+#define INCHI_BUILD_STAMP_WHEN "(no build timestamp)"
 void HelpCommandLineParms(INCHI_IOSTREAM* f)
 {
     if (!f)
@@ -2709,13 +2718,13 @@ void HelpCommandLineParms(INCHI_IOSTREAM* f)
 #ifdef TARGET_EXE_USING_API
         "%s %-s\n%-s Build (%-s%-s) of %s %-s %-s\n\nUsage:\ninchi_main inputFile [outputFile [logFile [problemFile]]] [%coption[ %coption...]]\n",
         APP_DESCRIPTION, INCHI_SRC_REV,
-        INCHI_BUILD_PLATFORM, INCHI_BUILD_COMPILER, INCHI_BUILD_DEBUG, __DATE__, __TIME__,
+        INCHI_BUILD_PLATFORM, INCHI_BUILD_COMPILER, INCHI_BUILD_DEBUG, INCHI_BUILD_SOURCE_TAG, INCHI_BUILD_STAMP_WHEN,
         RELEASE_IS_FINAL ? "" : " *** pre-release, for evaluation only ***",
         INCHI_OPTION_PREFX, INCHI_OPTION_PREFX);
 #else
         "%s %-s\n%-s Build (%-s%-s) of %s %-s %-s\n\nUsage:\ninchi-1 inputFile [outputFile [logFile [problemFile]]] [%coption[ %coption...]]\n",
         APP_DESCRIPTION, INCHI_SRC_REV,
-        INCHI_BUILD_PLATFORM, INCHI_BUILD_COMPILER, INCHI_BUILD_DEBUG, __DATE__, __TIME__,
+        INCHI_BUILD_PLATFORM, INCHI_BUILD_COMPILER, INCHI_BUILD_DEBUG, INCHI_BUILD_SOURCE_TAG, INCHI_BUILD_STAMP_WHEN,
         RELEASE_IS_FINAL ? "" : " *** pre-release, for evaluation only ***",
         INCHI_OPTION_PREFX, INCHI_OPTION_PREFX );
 

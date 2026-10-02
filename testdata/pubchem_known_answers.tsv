@@ -1,0 +1,31 @@
+# Known answers, one compound per line, tab separated.
+#
+# Provenance: every field below was read out of PubChem's own compound
+# records, queried one CID at a time through the PubChem PUG REST property
+# endpoint, e.g.
+#
+#   https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/962/property/InChI,InChIKey,MolecularFormula/JSON
+#
+# Nothing here was produced by, or checked against, the library under test.
+# The identifiers are PubChem's standard InChI strings and the keys are
+# PubChem's InChIKeys; where this file and the library disagree, the file is
+# right by construction.
+#
+# Columns
+#   name      PubChem compound name, lower case, no spaces
+#   cid       PubChem CID
+#   formula   PubChem molecular formula
+#   inchi     PubChem standard InChI, verbatim
+#   inchikey  PubChem InChIKey, verbatim
+#
+name	cid	formula	inchi	inchikey
+water	962	H2O	InChI=1S/H2O/h1H2	XLYOFNOQVPJJNP-UHFFFAOYSA-N
+methane	297	CH4	InChI=1S/CH4/h1H4	VNWKTOKETHGBQD-UHFFFAOYSA-N
+ethanol	702	C2H6O	InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3	LFQSCWFLJHTTHZ-UHFFFAOYSA-N
+benzene	241	C6H6	InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H	UHOVQNZJYSORNB-UHFFFAOYSA-N
+glycine	750	C2H5NO2	InChI=1S/C2H5NO2/c3-1-2(4)5/h1,3H2,(H,4,5)	DHMQDGOQFOQNFH-UHFFFAOYSA-N
+l_alanine	5950	C3H7NO2	InChI=1S/C3H7NO2/c1-2(4)3(5)6/h2H,4H2,1H3,(H,5,6)/t2-/m0/s1	QNAYBMKLOCPYGJ-REOHCLBHSA-N
+d_alanine	71080	C3H7NO2	InChI=1S/C3H7NO2/c1-2(4)3(5)6/h2H,4H2,1H3,(H,5,6)/t2-/m1/s1	QNAYBMKLOCPYGJ-UWTATZPHSA-N
+heavy_water	24602	H2O	InChI=1S/H2O/h1H2/i/hD2	XLYOFNOQVPJJNP-ZSJDYOACSA-N
+e_but2ene	62695	C4H8	InChI=1S/C4H8/c1-3-4-2/h3-4H,1-2H3/b4-3+	IAQRGUVFOMOMEM-ONEGZZNKSA-N
+z_but2ene	5287573	C4H8	InChI=1S/C4H8/c1-3-4-2/h3-4H,1-2H3/b4-3-	IAQRGUVFOMOMEM-ARJAWSKDSA-N
