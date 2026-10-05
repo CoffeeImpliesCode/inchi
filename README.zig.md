@@ -40,7 +40,8 @@ own link line and never reaches the executable that links the archive.
 
 | Command | What it does |
 |---|---|
-| `zig build` | installs `zig-out/lib/libinchi.a` and the two public headers `inchi_api.h` and `ixa.h` into `zig-out/include`, and compiles `smoke.zig` |
+| `zig build` | installs the bundled library — `zig-out/lib/libinchi.a` by default — both public headers `inchi_api.h` and `ixa.h` into `zig-out/include`, the generated `zig-out/lib/pkgconfig/inchi.pc`, `zig-out/bin/misuse`, the licence material under `zig-out/share/doc/inchi/`, and compiles `smoke.zig` |
+| `zig build -Dlinkage=dynamic` | the same install, as a shared library: `libinchi.so` with its soname links on ELF, `libinchi.dylib` on Darwin, `inchi.dll` and `inchi.lib` on Windows |
 | `zig build test` | builds **and runs** `tests.zig` in the requested `-Doptimize` mode |
 | `zig build smoke` | builds and runs the deterministic smoke program |
 | `zig build check` | compiles the C core, the facade, `tests.zig` and `smoke.zig` for all six cross targets, **without running any of them** |
@@ -48,11 +49,45 @@ own link line and never reaches the executable that links the archive.
 | `zig build consumer` | runs the separate package in `consumer/` against the published module |
 | `zig build -fsys=inchi` | links an installed `libinchi` instead of compiling this repository's copy |
 | `zig build -fno-sys=inchi` | the bundled build; this is the default |
+| `zig build install --prefix <dir>` | the install step with an explicit prefix, which is what `package.nix` calls |
+| `zig build -Druntime=true` | the same install, with the facade's `c` import backed by the generated dispatch instead of a link. See § Runtime loading |
+| `zig build runtime-test -Druntime=true` | runs `runtime/load_tests.zig`. **Only exists under `-Druntime=true`**; needs `INCHI_TEST_PROVIDER` and `INCHI_TEST_ALIEN`, and skips nothing when either is missing |
+| `misuse pre-load` / `misuse after-load <path>` / `misuse linked-load` | the installed program's three modes. Built and installed in **every** configuration, and **no build step runs them**: two of the three are supposed to stop, and which two depends on how it was built, so running them is the caller's |
+| `zig build consumer -Druntime=true -- --provider <path>` | names a provider for the consumer. Both hops now forward: the outer helper appends `--` and its `b.args`, then `consumer/build.zig` passes its `b.args` to the program. `PENDING-VERIFICATION` |
 
-`-Dtarget=` and `-Doptimize=` are the ordinary standard options. The
-optimisation mode is threaded verbatim into the C core, the facade, the test
-root, the smoke root, the six cross checks and the nested consumer; there is
-no Debug-to-ReleaseSafe mapping anywhere.
+`-Dlinkage` accepts `static` and `dynamic` and **defaults to `static`**, which is
+what this package always built; it is forwarded to the nested `consumer/` build
+alongside `-Dtarget`, `-Doptimize`, `-Druntime` and `-fsys`. `-Druntime` accepts
+`true` and `false` and **defaults to `false`**; it is orthogonal to `-Dlinkage`
+— which artifact, and which dispatch — and may be set with it. `-Dtarget=` and
+`-Doptimize=` are the ordinary standard options. The optimisation mode is
+threaded verbatim into the C core, the facade, the test root, the smoke root,
+the six cross checks and the nested consumer; there is no Debug-to-ReleaseSafe
+mapping anywhere.
+
+The nested consumer also receives the query's CPU selection, fixed `-j8`,
+two-token `--summary all`, the outer local cache's existing `consumer`
+subdirectory and the inherited global cache root via two-token
+`--global-cache-dir`. It retains the resolved target, optimize, linkage,
+runtime and system choices, executor switches and `--libc-runtimes`; trailing
+program arguments travel verbatim after `--`. The existing resolved-target
+`hostCanExecute` decision still chooses `run` or compile/install only.
+A non-default install prefix travels as two-token `--prefix` before the
+argument handover. The helper uses the actual `b.install_prefix`, making a
+relative prefix absolute before changing into `consumer/`; it emits no prefix
+when the outer build uses its default `zig-out`.
+These helper corrections are landed source, `PENDING-VERIFICATION`, not
+evidence that a configured provider has loaded or a foreign program has run.
+
+**One combination is refused:** `-Druntime=true` together with `-fsys=inchi`
+panics at configure time. The published cross gate names `-Dlinkage=static` and
+`-Druntime=false` explicitly — in `cross-test.profile.sh`'s `CROSS_BUILD_ARGS`
+and in the CI `cross` job — so the 53-cell matrix is the static linked closure
+by construction rather than by omission.
+
+This file documents the **Zig interface**. Current source deviations, current
+build deviations, the build/run/test matrix and consumption are in the fork's
+own [`README.md`](README.md).
 
 ## Cross-target checks
 
@@ -278,6 +313,11 @@ archive also puts `zig-out/include` on the include path of anything that links
 it, and `inchi_api.h` ends with `#include "ixa.h"`, so a C consumer that
 includes one header gets the whole IXA surface.
 
+For C consumers, for the packaged Nix variants and for the development shell,
+see § Consumption in [`README.md`](README.md). That is where the installed
+closure, `inchi.pc`, `nix build .#static` / `.#shared` and `devenv shell` are
+described, and where each one's verification state is stated.
+
 Then:
 
 ```zig
@@ -311,6 +351,10 @@ four published answers each — see [Examples](#examples).
 |---|---|
 | `Atom` | upstream's `inchi_Atom` (`inchi_api.h:134-162`), unchanged: `x`, `y`, `z`, `neighbor[MAXVAL]`, `bond_type[MAXVAL]`, `bond_stereo[MAXVAL]`, `elname[ATOM_EL_LEN]`, `num_bonds`, `num_iso_H[4]`, `isotopic_mass`, `radical`, `charge` |
 | `Stereo0D` | upstream's `inchi_Stereo0D`, unchanged |
+| `BondType` | `inchi_BondType` (`inchi_api.h:67-73`): `.none`, `.single`, `.double`, `.triple`, `.altern` ("avoid by all means") |
+| `BondStereo2D` | `inchi_BondStereo2D` (`inchi_api.h:74-86`), the 2D wedge notation. Read only when coordinates are supplied |
+| `StereoType0D` | `inchi_StereoType0D` (`inchi_api.h:407-412`): `.none`, `.double_bond`, `.tetrahedral`, `.allene` |
+| `StereoParity0D` | `inchi_StereoParity0D` (`inchi_api.h:415-422`): `.none`, `.odd`, `.even`, `.unknown`, `.undefined`. Relative to `Stereo0D.neighbor` order, and meaningless outside it |
 | `atom(symbol, hydrogens) Error!Atom` | a zeroed atom. Coordinates stay zero, so InChI reads the molecule's 0D parities instead |
 | `ImplicitHydrogens` | `.ordinary`, `.protium`, `.deuterium`, `.tritium`; `.none` and `.automatic` (`ordinary = -1`, upstream's "work it out yourself") |
 | `connect(atoms, first, second, kind, stereo2d) Error!void` | appends the bond to **both** adjacency lists, or to neither |
@@ -320,8 +364,23 @@ four published answers each — see [Examples](#examples).
 
 Charge, radical, isotopic mass and coordinates are raw fields on the returned
 `Atom`, written directly, and mean exactly what `inchi_api.h:134-162` says they
-mean. There is no higher-level builder: adding a helper would be reimplementing
-what upstream already does in `SetAtomAndBondProperties`.
+mean. **A raw adjacency list brings its own count.** `num_bonds` is what
+upstream reads, and it bounds `neighbor`, `bond_type` and `bond_stereo`
+together: entry `j` of those three describes the bond to `neighbor[j]` for
+`0 <= j < num_bonds`, and nothing past that is read
+(`inchi_api.h:165-171`). So an atom built by hand stays within
+`max_bonds_per_atom` entries and carries the number of entries it filled;
+`connect` maintains all three and the count for you.
+
+**`atom(symbol, ...)` has one failure and it is a length.** A symbol longer
+than `element_symbol_len - 1` is `error.ElementSymbolTooLong`. A NUL *inside* a
+short-enough symbol is not that error and is not an error at all: the bytes are
+copied into a zeroed `elname`, and the first NUL ends the element name, so
+`"C\0Cl"` is an atom named `C`. `elname` is a zero-terminated field
+(`inchi_api.h:147`) and this module does not add a validator for a symbol
+upstream itself stores verbatim. There is no higher-level builder: adding a
+helper would be reimplementing what upstream already does in
+`SetAtomAndBondProperties`.
 
 ### Structure to identifier
 
@@ -349,6 +408,48 @@ what upstream already does in `SetAtomAndBondProperties`.
 | `checkIdentifier(text, strict)` | `CheckINCHI`. `strict` is upstream's own switch: false checks the layout, true regenerates and demands the input back |
 | `checkKey(text)` | `CheckINCHIKey` |
 | `KeyResult` | `keyText()`, `firstHash()`, `secondHash()`. The buffers are fixed at the header's sizes and live in the value, so the key borrows nothing |
+| `KeyError` | the failure set of `key` and `standardKey`, one tag per `INCHIKEY_*` code (`inchi_api.h:1050-1056`) |
+
+`KeyVerdict` uses explicit signed `c_int` values matching the native
+`RetValCheckINCHIKeyv` codes: `.standard` = 0, `.non_standard` = -1,
+`.invalid_length` = 1, `.invalid_layout` = 2 and `.invalid_version` = 3.
+Thus `@intFromEnum(checkKey(text))` preserves the native verdict as well as
+its tag. This corrects the prior implicit numbering, which serialized
+`.non_standard` as 1. The driver observed that mismatch before this change;
+the driver subsequently observed all 24 semantic probe rows passing on
+2026-10-04 (`bg1114`, Debug/ReleaseSafe, static/dynamic): returned numeric
+verdicts match 0, -1, 1, 2 and 3. Receipt:
+`/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/after/summary.json`.
+This scoped observation does not establish the current full suite, 53-target
+matrix, runtime loading or nested helper/prefix behavior.
+
+**`KeyError` is the one channel here that cannot report a code it did not
+anticipate.** An error tag carries no number, so a code this release does not
+name arrives as `error.UnknownFailure` and the number is lost with it. `Status`,
+`IdentifierVerdict` and `KeyVerdict` are non-exhaustive enums with a `_` field
+and keep the raw value a caller did not see named. That channel difference is
+disclosed rather than papered over: a caller that must tell two unmapped codes
+apart reads a verdict enum, and does not guess at `UnknownFailure` to recover a
+number it never had. `INCHIKEY_EMPTY_INPUT` is absent for the same kind of
+reason — upstream returns it only for a NULL source pointer
+(`ikey_dll.c:162-165`), which this facade never hands over, so a zero-length
+identifier arrives as `InvalidInchiPrefix` instead.
+
+Neither `key` nor `standardKey` allocates: the key and the hashes live in
+buffers the returned `KeyResult` carries, so an error path releases nothing and
+a success path releases nothing either.
+
+`MolfileStatus` keeps every code in the header's `RetValMol2INCHI` namespace,
+not a promise that `MakeINCHIFromMolfileText` produces every one. In the pinned
+v1.07.5 producer, reading failures and generation failures both become
+`.rejected` (2), not `.structure_failed` (4) or `.generation_failed` (5)
+(`inchi_dll_b.c:184-197`, `inchi_dll_b.c:229-232`). Those two named arms retain
+the header's upper-bound namespace; they cannot identify which stage failed in
+this producer. Read the message and log instead. This documentation correction
+is `SOURCE-CONFIRMED`. The driver's same 24-row after wave observed the
+malformed-molfile control returning raw 2 and typed `.rejected` serialized as
+2 in all four configurations. Generation-failure collapse and non-emission
+of codes 4/5 remain source-confirmed, not runtime reachability observations.
 
 ### Status, and why a warning is not a failure
 
@@ -372,10 +473,29 @@ if (out.isWarning()) {
 const identifier = out.identifier().?;   // present, and the published one
 ```
 
-The converse also holds: a rejection arrives **with its reason**, not as a bare
-status. A pseudo-element `*` in `Molecule` is refused by both entry points
-before anything is generated (`inchi_dll.c:247-250`, `inchi_dll.c:275-278`) and
-`message()` is exactly `"Unsupported in this mode element '*'"`.
+The first-atom `*` fixture is rejected by the standard and non-standard
+constructors. Its message is `"Unsupported in this mode element '*'"`.
+Upstream's screening helper repeatedly checks the first atom, not each atom
+(`inchi_dll.c:299-313`). This result does not establish screening at later indices.
+
+The extended constructor rewrites `*` to `Zz`. Default options reject it.
+`NPZz` permits it and produces a beta identifier beginning `InChI=1B/`.
+The behavioral tests exercise both option settings.
+
+### Rebuild warnings
+
+`Structure.warnings()` is upstream's `WarningFlags` copied out of the struct,
+indexed `[x][y]` exactly as the header states it (`inchi_api.h:646-652`):
+
+* `x = 0` is the Reconnected layer where the identifier has one, and the
+  Disconnected/Normal layer where it does not; `x = 1` is the Disconnected
+  layer, which carries a layer only when a Reconnected one is present.
+* `y = 0` is the Fixed-H layer; `y = 1` is the Main layer, or Mobile-H.
+
+Each cell is a bit set, and the bits are named by `INCHIDIFF_*` in
+`inchicmp.h:47-93` — not in `ichicant.h`, which names none of them. The module
+keeps upstream's raw word and gives those names no Zig values, so a caller reads
+a bit against those names at this pinned revision.
 
 ### Lifetimes and ownership, in one place
 
@@ -386,6 +506,15 @@ before anything is generated (`inchi_dll.c:247-250`, `inchi_dll.c:275-278`) and
   changes no behaviour today — `FreeStdINCHI` is literally `FreeINCHI`
   (`inchi_dll.c:183-186`) — and it is kept because the pairing that matters is
   the one the creator promised in the header.
+* **One owner, one release.** `Output` and `Structure` are single-owner values
+  and the type system cannot say so: assigning or passing one copies its
+  pointers, and a second `deinit` reached through the copy frees the same
+  allocation a second time. Release each exactly once, on **every** path that
+  received a value — a warning is a qualified success and a rejection may still
+  carry a message. Upstream zeroes each struct as it frees
+  (`inchi_dll.c:173`, `inchi_dll.c:232`), so a released value holds nothing and
+  every borrowed slice it handed out is gone. `KeyResult` is the opposite case
+  and is documented as such: it owns nothing, so any number of copies are safe.
 * **Nothing is copied on the way out.** `identifier()`, `auxInfo()`,
   `message()`, `log()`, `atoms()` and `stereo0d()` all borrow memory the C
   library allocated. No accessor allocates, concatenates or copies.
@@ -400,8 +529,11 @@ before anything is generated (`inchi_dll.c:247-250`, `inchi_dll.c:275-278`) and
   .stereo0d = structure.stereo0d() })` compiles.
 * **Input is borrowed.** `Molecule.atoms` and `Molecule.stereo0d` must outlive
   the call; the option string is borrowed too, and upstream copies it before
-  parsing (`inchi_dll.c:476-480`), so a NUL-terminated literal is safe even
-  though C declares the field `char *`.
+  parsing in both directions (`inchi_dll.c:476-480`,
+  `inchi_dll_a.c:314-321`, `inchi_dll.c:2216-2219`,
+  `inchi_dll.c:2586-2589`), so a NUL-terminated literal is safe even
+  though C declares the field `char *`. Nothing is retained past the call:
+  the result borrows upstream's memory, never the caller's bytes.
 * **What is not borrowed is the `inchi_Input` struct itself.** C declares every
   one of these parameters non-const (`inchi_dll.c:242`, `inchi_dll.c:2114`), so
   each call builds that five-field struct in a mutable local of its own and
@@ -426,6 +558,46 @@ can go straight into `key`, `standardKey`, `checkIdentifier` or back into
 So `?[:0]const u8` and `[:0]const u8` throughout, and nothing here claims a
 sentinel for an arbitrary slice.
 
+### Options, and the text this package accepts
+
+`Molecule.options` and the `options` argument of the three `fromIdentifier`
+entry points take **upstream's own option string verbatim**: space delimited,
+every option prefixed with `/` or `-` depending on the platform the caller
+builds for. This facade adds, removes and rewrites nothing.
+
+`null` and `""` are the same call — no options at all — and they get there
+through different upstream control flow, which is why there is one
+normalisation here rather than two layers:
+
+* **Structure to identifier.** `GetStdINCHI` and `GetINCHI` test the option
+  pointer itself, so `null` skips the copy and the parse and fixes `argc` at 1
+  outright (`inchi_dll.c:474-493`), while `""` is copied and parsed
+  (`inchi_dll.c:476-480`) into that same `argc == 1` — `parse_options_string`
+  finds no argument in an empty command (`inchi_dll.c:1046-1062`) and
+  `ReadCommandLineParms` only ever reads `argv[1..argc-1]` (`ichiparm.c:776`).
+* **Identifier to structure, and identifier to identifier.** Those entry points
+  test the input pointer, not the option pointer (`inchi_dll.c:2210`,
+  `inchi_dll.c:2579`), so both spellings are copied into a buffer upstream then
+  appends its own main option to (`inchi_dll.c:2120`, `inchi_dll.c:2503`,
+  `inchi_dll.c:2220`, `inchi_dll.c:2589`) and parses. An empty string and a
+  null one both leave that main option alone; neither is an argument of its
+  own.
+
+Neither spelling is a way to ask for an empty argument list, and neither
+clears an option.
+
+Nothing in `fromIdentifier.*` can fail before upstream runs, so that namespace
+raises no `Error` at all: every failure it reports arrives as
+`Structure.status` / `Output.status` with its message attached.
+`error.TooManyAtoms` belongs to the structure-to-identifier direction alone.
+
+**A NUL inside a sentinel string ends it.** Every `[:0]const u8` this package
+accepts reaches C as a `char *`, and C reads it as a C string, so bytes after
+the first NUL are invisible to upstream and to anything that comes back. The
+sentinel type guarantees the trailing terminator, not the absence of interior
+ones. The same rule applies to an element symbol, where the NUL lands in a
+zero-terminated `Atom.elname` field instead.
+
 ### Stereo boundaries
 
 * A 0D parity is **relative to the order of `Stereo0D.neighbor`** and means
@@ -443,7 +615,7 @@ sentinel for an arbitrary slice.
 * **An allene is not built here.** `doubleBondStereo` writes the
   `INCHI_StereoType_DoubleBond` form only. The allene form keeps the same
   quadruple, sets `type = INCHI_StereoType_Allene` and names the middle atom of
-  the odd double-bond chain in `central_atom` (`inchi_api.h:230-243`); write
+  the odd double-bond chain in `central_atom` (`inchi_api.h:272-290`); write
   that on a `Stereo0D` directly — the struct is public — rather than expecting
   this function to fill it in.
 * With every coordinate zero, the 2D wedge in `bond_stereo` is not read at all
@@ -457,16 +629,55 @@ each is at a boundary a caller can act on:
 
 | Boundary | Constant | What happens |
 |---|---|---|
-| element symbol length | `element_symbol_len` = `ATOM_EL_LEN`, 6 bytes including the terminator, so five characters | `error.ElementSymbolTooLong` |
-| adjacency list length | `max_bonds_per_atom` = `MAXVAL`, 20 | `error.TooManyNeighbors`, checked for **both** atoms before either is written |
-| atom and neighbour index | `AT_NUM`, a `short` | `error.AtomIndexOutOfRange` for an out-of-range or self-referential bond; `error.TooManyAtoms` past what `num_atoms` can count |
+| element symbol length | `element_symbol_len` = `ATOM_EL_LEN`, 6 bytes including the terminator, so five characters | `error.ElementSymbolTooLong`. A NUL inside an accepted symbol is not this error and is not refused: it ends the element name there |
+| adjacency list length | `max_bonds_per_atom` = `MAXVAL`, 20 | `error.TooManyNeighbors`, checked for **both** atoms before either is written. The count is taken over the whole range `0..max_bonds_per_atom`: `0` means no bond recorded yet, `max_bonds_per_atom` means there is no room left. **A negative raw `num_bonds` is no room either** — the field is `AT_NUM`, a `signed short` (`inchi_api.h:124`), and the API's own statement of the range is "Index j is in the range 0 <= j <= (atom[i].num_bonds-1)" (`inchi_api.h:171`). The compiled closure reads it as `for (j = 0; j < at_new[i].num_bonds; j++)` (`INCHI-1-SRC/INCHI_API/libinchi/src/ichilnct.c:297`), which visits nothing when the count is negative, so a negative count is a caller-writable raw value, not a shorter list |
+| atom and neighbour index | `AT_NUM`, a `short` | `error.AtomIndexOutOfRange` for an out-of-range or self-referential bond; `error.TooManyAtoms` past what `num_atoms` or `num_stereo0D` can count |
 | key buffer | `key_buffer_len` = 28 | the buffer is fixed in `KeyResult`, so there is nothing to size and nothing to overflow |
 | hash buffer | `hash_buffer_len` = 65 | likewise |
 | key length | exactly 27 | upstream rejects anything else (`ikey_dll.c:521-525`); surfaced as `KeyVerdict.invalid_length`, not as a silent truncation |
 
-`error.TooManyAtoms` and `error.NotEnoughMemory` are reachable in principle and
-unreached by the test suite: exercising them honestly needs more than 32767
-atoms or a real allocation failure, and neither is mocked here.
+**The negative-count half of the adjacency row is landed source and is still
+`PENDING-VERIFICATION`.** Both halves of the row are now true of this tree:
+`used()` at `zig/root.zig:1746-1748` is total — `if (count <= 0) 0 else
+@intCast(count)`, the same `count <= 0` test `borrowedArray` already used — so
+it can no longer trap on a value the field is declared to hold, and the new
+private `countOutOfRange` at `zig/root.zig:1759-1761` refuses anything outside
+`0..max_bonds_per_atom` with two ordinary comparisons. `connect` calls it for
+**both** atoms at `zig/root.zig:1149-1153`, before either list is written, and
+returns the existing `Error.TooManyNeighbors` — no new error variant and no
+signature change. The `Error.TooManyNeighbors` doc at `zig/root.zig:460-468`
+now states the whole range rather than only the ceiling.
+
+**What it replaced, and why the note is still `PENDING-VERIFICATION`.** Before
+it, `used()` was a bare `@intCast` on the caller-writable raw field and
+`connect` tested only the ceiling, so one `connect` call answered two different
+ways according to `-Doptimize`: an opaque "integer cast truncated bits" trap in
+Debug and ReleaseSafe, and in ReleaseFast/ReleaseSmall a wrap to a huge `usize`
+that `append` then indexed past `neighbor`, `bond_type` and `bond_stereo`. The
+row above describes the fixed behaviour, which is `SOURCE-CONFIRMED` from the
+source read at the line numbers above. **No gate has run since the change, no
+receipt in this file observes it, and this file claims no result for it** — a
+22-test `tests.zig` has not been executed by any receipt here either, so the
+suite that would exercise this has not been run at all. The before half is
+recorded on the API owner's own side in [`CHANGELOG.md`](CHANGELOG.md) §40,
+which carries the status "`PENDING-VERIFICATION`, with the before half
+observed" and names [`FORK-NOTES.md`](FORK-NOTES.md) **L30** as its
+transferable form. Neither claims a result after the change.
+
+**`error.TooManyAtoms` is this facade's count, not the library's molecule
+size.** It fires above what `AT_NUM` — a `signed short` (`inchi_api.h:124`) —
+can hold, so the facade admits 32767 atoms. Upstream's own structural ceiling
+is `MAX_ATOMS`, 32766 (`ichisize.h:50`), and the size it treats as the ordinary
+input is `NORMALLY_ALLOWED_INP_MAX_ATOMS`, 1024 (`ichisize.h:51`). A molecule
+between those is *not* refused here: it reaches upstream, and whatever upstream
+makes of it arrives as `Output.status` / `Structure.status` with its message.
+Nothing in this package narrows the check to the smaller number, because that
+is a library limit and not a representation the binding could enforce
+honestly.
+
+`error.NotEnoughMemory` is reachable in principle and unreached by the test
+suite: exercising it honestly needs a real allocation failure, and none is
+mocked here. The same is true of `error.TooManyAtoms`.
 
 ### The escape hatch
 
@@ -480,13 +691,30 @@ deliberately not wrapped, which is what keeps `Molecule.atoms` honestly
 
 ## Build modes
 
-**Default: the bundled, full, in-tree library.** No `-fsys` flag, and
-`-fno-sys=inchi` to say so explicitly. All 60 upstream translation units are
+**Default: the bundled, full, in-tree library, statically linked.** No `-fsys`
+flag, and `-fno-sys=inchi` to say so explicitly; no `-Dlinkage` flag, and
+`static` to say that explicitly. All 60 upstream translation units are
 compiled from `INCHI-1-SRC/` in this repository with `-std=c11`,
 `-fno-strict-aliasing`, `TARGET_API_LIB=1` and `COMPILE_ANSI_ONLY=1` — upstream's
 own dialect, flags and macros, read out of upstream's CMake and makefile — into
-a static `libinchi`, and `inchi_api.h` and `ixa.h` are installed beside it.
+a static `libinchi`, and `inchi_api.h` and `ixa.h` are installed beside it
+together with a generated `inchi.pc` and the licence material.
 `UPSTREAM.md` gives the file-by-file list and what each choice is upstream's.
+
+**`-Dlinkage=dynamic`: the same library, as a shared object.** Not a second
+project and not a different set of sources: the same 60 units, the same flags,
+the same facade, linked shared. On ELF targets the build passes upstream's own
+version script `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` to the linker,
+so what is exported is the public API and not every internal InChI symbol, and
+`-fPIC` is added on non-Windows targets — both quoted from upstream's
+`libinchi/gcc/makefile:62-67`. On a Windows ABI it defines `BUILD_LINK_AS_DLL`
+and `_USRDLL` on the C core only for `msvc`, because `inchi_api.h:691` gates the
+whole import/export block on `_WIN32 && _MSC_VER && BUILD_LINK_AS_DLL`; on MinGW
+neither is defined, which is upstream's own observable behaviour, and on a
+static build neither is defined anywhere. **No shared build has been produced
+in this workspace**, so the behaviour above is `SOURCE-CONFIRMED` from the
+pinned sources and the option is `PENDING-VERIFICATION` in the matrix in
+[`README.md`](README.md).
 
 **`-fsys=inchi`: the installed library.** Opt-in; nothing in this package turns
 it on by default. In this mode the build translates the header that is actually
@@ -506,6 +734,168 @@ that disagree is a real mismatch this package cannot detect for you.
 **No run of `-fsys=inchi` has happened in this workspace**, so no proof is
 claimed for it; it needs an installed `libinchi` with its own matching
 `inchi_api.h` and `ixa.h`.
+
+### Runtime loading
+
+**`-Druntime=true`**, default `false`. The typed surface is identical in both
+configurations; only where the symbols come from changes. With the option set,
+`build.zig` replaces exactly one call in the bundled arm —
+`module.linkLibrary(artifact.?)` — with
+`runtime/graph.zig createModule(b, translate_c, target, optimize)`, and the
+facade's `c` import becomes a generated dispatch instead of the translated
+header's module. The C artifact is built and installed either way: which
+dispatch a build *uses* is a different question from which artifact it
+*produces*.
+
+The facade-level contract is settled and is what a caller writes: a comptime
+`inchi.runtime_loaded` telling you which configuration you are in, and
+`inchi.load(source)`. `-Dlinkage` and `-Druntime` are orthogonal — the first
+answers *which artifact*, the second *which dispatch* — and may be set
+together.
+
+Four pieces, and who owns each:
+
+* `runtime/loader.zig` — the reusable loader core. Pure Zig, and it names no
+  symbol of its own, which is what lets two SDKs hold their own loader state in
+  one process without sharing any of it. It is the driver's reviewed copy.
+* `runtime/library.zig` — this SDK's descriptor: the namespaced synchronization
+  binding, the one load-time check, and the record of what a provider must be.
+* `runtime/generate.zig` — builds the dispatch from whatever the translation
+  step actually produced, so the generated table describes the header this
+  build selected rather than another one. Driver copy.
+* `runtime/sync.c` — compiled into the dispatch with
+  `-DRT_SYNC_PREFIX=inchi_rt`. `runtime/library.zig` declares the same prefix in
+  the symbol names it binds, and a build where the two disagree fails to link,
+  which is the whole error report: there is no runtime path that could hide it.
+
+A linked build has no dispatch, so it imports the core module itself for the
+two public types `LoadSource` and `LoadError` — they are this SDK's types and
+must be the same types a caller names in either configuration. A runtime build
+must not import it separately; two instances would be two sets of types.
+
+#### Calling it
+
+```zig
+const inchi = @import("inchi");
+
+try inchi.load(.{ .path = "/usr/local/lib/libinchi.so" });
+// or by name — the arm is always explicit, and neither falls back to the other:
+try inchi.load(.{ .system = "libinchi.so.1" });
+```
+
+After a successful load the calls are ordinary module calls and look exactly
+like the linked ones. **Before** one, an ordinary call panics — in every
+optimization mode, `ReleaseFast` and `ReleaseSmall` included — naming the
+library and telling the caller to call `load` first. That is an ordinary
+pre-initialization panic, not a `debug`-only assertion, because a release build
+that silently called through an uninitialised table would be worse than one
+that stops.
+
+`load` returns one of `EmptySource`, `SourceTooLong`, `UnsupportedTarget`,
+`OpenFailed`, `MissingSymbol`, `ValidationFailed`, `ProviderMismatch`,
+`ReentrantLoad`. The behaviour that matters to a caller:
+
+* **One provider per process, chosen once.** The same request twice is
+  idempotent. A *different* request after a load has succeeded returns
+  `ProviderMismatch` and changes nothing; the provider already chosen stays
+  chosen. There is no automatic retry.
+* **A failed attempt publishes nothing.** The candidate is closed, and the next
+  explicit `load` starts a fresh attempt. Contending callers wait for the
+  attempt in flight and receive its result rather than a later one.
+* **A request too long is refused, not truncated.** The loader keeps its own
+  copy for the life of the process rather than allocating one, and a truncated
+  path is a different path — loading a file other than the one asked for is the
+  one outcome this loader must never produce.
+* **No path-to-system fallback.** `.path` and `.system` go to the platform
+  loader unchanged; `.path` is an absolute file path and `.system` a basename
+  or SONAME.
+
+#### What a provider must be, and where that boundary actually is
+
+Read out of `runtime/library.zig`, not assumed:
+
+* **It exports** every `extern` the translated header declares — the whole
+  `GetINCHI`/`GetStdINCHI`/`GetINCHIEx` generation surface, every
+  `GetStructFrom*` rebuild, every `Free*`, the AuxInfo conversion pair and its
+  release pair, the key surface (`GetINCHIKeyFromINCHI`,
+  `GetStdINCHIKeyFromStdINCHI`, `CheckINCHIKey`), `CheckINCHI`,
+  `MakeINCHIFromMolfileText`, the whole `INCHIGEN_*`/`STDINCHIGEN_*` modularized
+  generator, and all **91** `IXA_*` entry points. A provider that does not export
+  them is refused rather than half used.
+* **One deliberate exception.** `FreeInChIExtInput` (`inchi_api.h:678`) is
+  declared without the `EXPIMP_TEMPLATE INCHI_API` decoration the rest carry,
+  is defined at `INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll.c:2923`, and is
+  *absent* from the **127** globals in
+  `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` — 36 classic and 91 `IXA_`,
+  which together are exactly every decorated declaration in `inchi_api.h` and
+  `ixa.h` and nothing else — whose `local: *` therefore
+  hides it from a shared ELF provider. `FreeStructFromINCHIEx` calls it
+  internally at `inchi_dll.c:2915`, and the typed surface releases a structure
+  through the matching `Free*`, so demanding the symbol would refuse a correct
+  libinchi for a reason that has nothing to do with the caller. Its declaration
+  stays **direct**.
+* **Same headers, same settings.** `MAXVAL` 20, `ATOM_EL_LEN` 6,
+  `NUM_H_ISOTOPES` 3, `STR_ERR_LEN` 256, `MAX_NUM_STEREO_ATOM_NEIGH` 4,
+  `MAX_NUM_STEREO_BONDS` 3, `INCHI_NUM` 2, `FIND_RING_SYSTEMS` 1. Those fix the
+  layouts of `inchi_Atom`, `inchi_Stereo0D`, `InchiInpData`, `NORM_ATOM`,
+  `NORM_ATOMS` and `INCHIGEN_DATA`, and `inchi_Atom` is also what the facade's
+  own `Atom` is — a provider built from a different header configuration would
+  misread every molecule handed to it.
+* **ABI family.** Plain C calling convention on every target.
+  `EXPIMP_TEMPLATE`, `INCHI_API` and `INCHI_DECL` are all empty on this build
+  because `BUILD_LINK_AS_DLL` is not defined and the branch that would add
+  `__declspec` also requires `_WIN32` and `_MSC_VER` (`inchi_api.h:691-703`); a
+  provider that *was* built as a `dllexport` DLL is still callable through the
+  table, because a name and a calling convention are all a
+  `dlsym`/`GetProcAddress` result carries. No variadics — no declaration in
+  `inchi_api.h` or `ixa.h` is variadic, so the dispatch builds no variadic
+  wrapper. No exported data — neither header declares an `extern` object, so
+  every table entry is a function and no `NAMEAddr()` accessor exists.
+  Scalars: `AT_NUM` and `NUM_HS` are `signed short`, `AT_NUMBR` `unsigned
+  short`, `S_CHAR` `signed char`, `U_CHAR` `unsigned char`, `INCHI_MODES` and
+  the `WarningFlags` cells `unsigned long`, every status a plain `int`.
+  Nothing here is width-configurable.
+* **Allocator.** Upstream's own. `inchi_malloc`/`inchi_calloc`/`inchi_free` are
+  internal to the provider, and every allocation a caller receives is released
+  by a matching `Free*` in that same provider. No Zig allocator is ever in the
+  path — which is also why a Zig leak oracle cannot see one.
+
+**The boundary is honest.** Resolving the symbols and translating the header is
+the boundary; neither is proof that a provider is compatible, and this package
+does not pretend to add one. The only load-time check is
+`Config(dispatch).validate`, which asks `CheckINCHIKey` — a pure,
+allocation-free function over one C string (`ikey_dll.c:513-597`) — to classify
+PubChem's published InChIKey for water, `XLYOFNOQVPJJNP-UHFFFAOYSA-N`, as a
+valid standard key and `not-an-inchikey` as invalid. That is a check that two
+routed entry points behave, **not** a compatibility verdict: a provider compiled
+with a different `MAXVAL` would answer it correctly and still misread a
+molecule.
+
+#### One refused combination
+
+`-Druntime=true` together with `-fsys=inchi` **panics at configure time**, with
+a message saying why. System mode's contract is to bind to an *installed*
+`libinchi`; a configuration that resolves its symbols at run time does not bind
+to one. It is refused rather than resolved in favour of either side, because
+silently dropping one would build something the caller did not ask for under a
+name that says they did.
+
+#### The two runtime steps
+
+* **`runtime-test`** exists **only** under `-Druntime=true`. It is `addTest`
+  plus `addRunArtifact` on `runtime/load_tests.zig`, exactly like the existing
+  `test` step. It needs both `INCHI_TEST_PROVIDER` and `INCHI_TEST_ALIEN`, and
+  it **skips nothing** when either is missing — a test that cannot name a
+  provider has nothing to say, and passing anyway would mean nothing at all —
+  so it cannot be run in a context that cannot name both.
+* **`misuse`** is built and installed by `zig build` in **every** configuration,
+  because which of its modes stops depends on the configuration and only the
+  caller knows which one it built. Its three modes are `misuse pre-load`,
+  `misuse after-load <path>` and `misuse linked-load`, matching the header in
+  `runtime/misuse.zig`. There is **no step that runs it and asserts an exit
+  status**, and none is invented here: two of the three modes are supposed to
+  stop, and which two depends on the configuration. `zig build` owes that it
+  produces the program; running the three commands is the caller's.
 
 ## Examples
 
@@ -644,6 +1034,14 @@ because that tree moved under them — the `ichiparm.c` patch, then the
   `local://foundation-cross-test-package-regression.json`. This file quotes no
   result and no identity for them, because its own bytes contribute to that
   identity.
+* **every receipt above predates the current migration wave**, which added
+  `-Dlinkage`, the generated `inchi.pc`, the full installed closure, upstream's
+  ELF version script as a shipped file, and the portable Nix and devenv
+  packaging. That wave has had no gate. Its rows sit at the bottom of this
+  table, each marked **`PENDING-VERIFICATION`**, and none of them borrows a
+  receipt from an earlier row. The one earlier row that
+  changed shape is the integrity check: `UPSTREAM.sha256` grew from 109 lines
+  to 110, so **no receipt in this file covers the record as it stands**.
 
 | Gate | Command | State | Receipt |
 |---|---|---|---|
@@ -651,18 +1049,18 @@ because that tree moved under them — the `ichiparm.c` patch, then the
 | test and smoke (ReleaseSafe, native) — **HISTORY** | `taskset -c 0-7 zig build test smoke --summary all -Doptimize=ReleaseSafe --cache-dir …/inchi/native-releasesafe` | **green, exit 0**: `Build Summary: 9/9 steps succeeded; 16/16 tests passed`, `run test inchi-tests 16 pass (16 total) 244ms`, and the same five smoke lines ending `smoke ok`. Sixteen tests in each mode, from the same patched sources. **History: taken before the `ichicano.c` patch** | `local://foundation-expansion-inchi-patched-native-releasesafe-durable-374.log` |
 | consumer — **HISTORY** | `cd consumer && zig build run -j8 --summary all --cache-dir …/inchi/native-consumer` | **green, exit 0**: the same four answers built through `dep.module("inchi")`, `check XLYOFNOQVPJJNP-UHFFFAOYSA-N = standard`, `check InChI=1S/H2O/h1H2 = standard`, `consumer ok`, `Build Summary: 6/6 steps succeeded`. **History: taken before the `ichicano.c` patch** | `local://foundation-expansion-inchi-authorized-patch-consumer-373.log` |
 | test, smoke and install (Debug, native) — 2026-10-02 wave — **HISTORY** | `zig build test smoke install -Doptimize=Debug -j8 --summary all --color off --cache-dir …/cross-test-01a0f400/inchi/native` | **green, exit 0**, 22.9 s: `Build Summary: 11/11 steps succeeded; 16/16 tests passed`, `observed_test_totals: passed 16, total 16`, the four published answers plus `ethanol renumbered`. **History: this wave compiled the guard's first placement**, before it moved below `mode.h` | `local://foundation-cross-test-inchi-native-Debug.log` |
-| test and smoke (ReleaseSafe, native) — 2026-10-02 wave | `zig build test smoke -Doptimize=ReleaseSafe -j8 --summary all --color off` | **green, exit 0**, 60.4 s: `Build Summary: 9/9 steps succeeded; 16/16 tests passed`, `observed_test_totals: passed 16, total 16`, the same five smoke lines. **Sixteen tests in each of the two modes, from one tree in one session** | `local://foundation-cross-test-inchi-native-ReleaseSafe.log` |
-| consumer — 2026-10-02 wave | `cd consumer && zig build run -j8 --summary all --color off` | **green, exit 0**, 10.6 s: the same four answers built through `dep.module("inchi")`, `check InChI=1S/H2O/h1H2 = standard`, `consumer ok`, `Build Summary: 6/6 steps succeeded` | `local://foundation-cross-test-inchi-native-consumer.log` |
-| test, smoke and install (Debug, native) — **stable wave, on the shipped arrangement** | `zig build test smoke install -Doptimize=Debug -j8 --summary all --color off --cache-dir …/cross-test-01a0f400/inchi/native --prefix …/cross-test-01a0f400/native-install/inchi` | **green, exit 0**, 1.152 s, `timed_out: false`: `Build Summary: 11/11 steps succeeded; 16/16 tests passed`, `expected_tests: 16`, `observed_tests_passed: 16`, `observed_tests_total: 16`, `verification_status: success`. **This is the current native evidence for the file as it ships** | `local://foundation-cross-test-stable-inchi-native-Debug.log` |
-| test and smoke (ReleaseSafe, native) — **stable wave, on the shipped arrangement** | `zig build test smoke -Doptimize=ReleaseSafe -j8 --summary all --color off --cache-dir …/cross-test-01a0f400/inchi/native --prefix …/cross-test-01a0f400/native-install/inchi` | **green, exit 0**, 18.584 s: `Build Summary: 9/9 steps succeeded; 16/16 tests passed`, `observed_tests_passed: 16`, `observed_tests_total: 16`, `verification_status: success`. **Sixteen tests in each of the two modes, from one tree in one session** | `local://foundation-cross-test-stable-inchi-native-ReleaseSafe.log` |
-| consumer — **stable wave, on the shipped arrangement** | `cd consumer && zig build run -j8 --summary all --color off --cache-dir …/cross-test-01a0f400/inchi/native-consumer --prefix …/cross-test-01a0f400/native-install/inchi/consumer` | **green, exit 0**, 0.968 s: `Build Summary: 6/6 steps succeeded`, `verification_status: success`, `timed_out: false`. Debug, against the tree the two rows above installed | `local://foundation-cross-test-stable-inchi-native-consumer.log` |
+| test and smoke (ReleaseSafe, native) — 2026-10-02 wave — **HISTORY** | `zig build test smoke -Doptimize=ReleaseSafe -j8 --summary all --color off` | **green, exit 0**, 60.4 s: `Build Summary: 9/9 steps succeeded; 16/16 tests passed`, `observed_test_totals: passed 16, total 16`, the same five smoke lines. Sixteen tests in each of the two modes, from one tree in one session — **history, same sixteen-test arrangement as the Debug row above it** | `local://foundation-cross-test-inchi-native-ReleaseSafe.log` |
+| consumer — 2026-10-02 wave — **HISTORY** | `cd consumer && zig build run -j8 --summary all --color off` | **green, exit 0**, 10.6 s: the same four answers built through `dep.module("inchi")`, `check InChI=1S/H2O/h1H2 = standard`, `consumer ok`, `Build Summary: 6/6 steps succeeded` — against the same sixteen-test arrangement | `local://foundation-cross-test-inchi-native-consumer.log` |
+| test, smoke and install (Debug, native) — stable wave — **HISTORY** | `zig build test smoke install -Doptimize=Debug -j8 --summary all --color off --cache-dir …/cross-test-01a0f400/inchi/native --prefix …/cross-test-01a0f400/native-install/inchi` | **green, exit 0**, 1.152 s, `timed_out: false`: `Build Summary: 11/11 steps succeeded; 16/16 tests passed`, `expected_tests: 16`, `observed_tests_passed: 16`, `observed_tests_total: 16`, `verification_status: success`. Those numbers are what this run printed and they are kept as they stand. **History, not current evidence for the file as it ships**: `expected_tests: 16` is itself the proof that the tree it compiled declared sixteen tests, and `tests.zig` declares **22** now. Six of them — the two extended polymer/V3000 routes, the AuxInfo-refusal residue test, the molfile refusal/residue test, and the tests at `:526` and `:574` — landed after it | `local://foundation-cross-test-stable-inchi-native-Debug.log` |
+| test and smoke (ReleaseSafe, native) — stable wave — **HISTORY** | `zig build test smoke -Doptimize=ReleaseSafe -j8 --summary all --color off --cache-dir …/cross-test-01a0f400/inchi/native --prefix …/cross-test-01a0f400/native-install/inchi` | **green, exit 0**, 18.584 s: `Build Summary: 9/9 steps succeeded; 16/16 tests passed`, `observed_tests_passed: 16`, `observed_tests_total: 16`, `verification_status: success`. Sixteen tests in each of the two modes, from one tree in one session — **history for both modes for the same reason as the row above**. Three later source-bound runs have executed the 22-test file, and they are the four rows at the foot of this table | `local://foundation-cross-test-stable-inchi-native-ReleaseSafe.log` |
+| consumer — stable wave — **HISTORY** | `cd consumer && zig build run -j8 --summary all --color off --cache-dir …/cross-test-01a0f400/inchi/native-consumer --prefix …/cross-test-01a0f400/native-install/inchi/consumer` | **green, exit 0**, 0.968 s: `Build Summary: 6/6 steps succeeded`, `verification_status: success`, `timed_out: false`. Debug, against the tree the two rows above installed — so it carries the same sixteen-test arrangement, not the 22-test one | `local://foundation-cross-test-stable-inchi-native-consumer.log` |
 | installed C/IXA surface — compile — **HISTORY** | `zig cc -std=c11 -DTARGET_API_LIB -DCOMPILE_ANSI_ONLY -I …/install/include c_surface_gate.c …/install/lib/libinchi.a -lm -o …/patched-C-IXA-surface` | **green, exit 0**, no diagnostics: upstream's own installed `inchi_api.h`, the installed archive, no wrapper. **History: it links the archive the `-365` row installed, which predates the `ichicano.c` patch** | `local://foundation-expansion-inchi-patched-installed-C-IXA-compile-386.log` |
 | installed C/IXA surface — run — **HISTORY** | `…/patched-C-IXA-surface` | **green, exit 0**: `installed InChI ethanol/key and IXA water agree with PubChem`. **History: the same pre-`ichicano.c` installed copy as the row above** | `local://foundation-expansion-inchi-patched-installed-C-IXA-smoke-387.log` |
 | installed usage banner — compile, then run — **HISTORY** | `zig cc … patched_banner_smoke.c …/install/lib/libinchi.a -lm -o …/patched_banner_smoke`, then `…/patched_banner_smoke` | **green, exit 0** both times: `GetINCHI(empty): deterministic pinned-source help stamp observed`, then the two banner lines quoted in § The authorised `ichiparm.c` patch, landed and covered, carrying `of v1.07.5 (no build timestamp)` and no date anywhere. **History: the same pre-`ichicano.c` installed copy** | `local://foundation-expansion-inchi-patched-installed-banner-compile-384.log`, `…-patched-installed-banner-smoke-385.log` |
 | `sha256sum -c UPSTREAM.sha256` — **HISTORY, first-patch record** | as below | **green, exit 0** on the record as it stood at the first patch: 109 records, 109 `: OK`, no failures, `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c: OK` and `INCHI-1-SRC/INCHI_API/tbb/LICENSE: OK` among them. **History: that record's `ichicano.c` line held a digest this package no longer names**, so the row is not evidence about the record as it stands | `local://foundation-expansion-inchi-authorized-patch-integrity-109-364.log` |
 | scoped diff against the pin | `git diff 11a87982bb518f57ac013f0b258c283655e1ea1d -- INCHI-1-SRC LICENSE` | **exit 0, with a diff over one path**, `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c`, in three hunks: the `:2597` comment correction, the nine-line insertion at `:2699`, and the two argument rewrites. **Not a pristine proof**: it carries no `--exit-code`, so its exit status says only that the query ran, and it says nothing about any path outside `INCHI-1-SRC` and `LICENSE` | `local://foundation-expansion-inchi-authorized-single-native-file-deviation-363.log` |
 | package fetch — **HISTORY** | `zig fetch <this package path> --global-cache-dir <scratch>`, from a build root outside the repository | **green, exit 0**, and the package materialises out of `.paths`. **The identity it printed is deliberately not quoted as current.** That fetch hashed a tree whose `ichiparm.c`, `ichicano.c` and package documents are all in earlier states, so its hash is a property of that snapshot: quoting it beside the current documentation would be a circular claim about a file that the hash itself covers | `local://foundation-expansion-inchi-current-filtered-package-fetch-382.log` |
-| materialised integrity — **HISTORY** | `sha256sum -c UPSTREAM.sha256`, run **inside** the fetched package | **green, exit 0, 109 of 109 `OK`.** Every line of the record has a file behind it in the filtered copy — `INCHI-1-SRC/INCHI_BASE/src/stb_sprintf.h`, `…/src/tbb/tbbmalloc_proxy.h`, `INCHI-1-SRC/INCHI_API/tbb/LICENSE`, the upstream `LICENSE` and `README.md` among them — so the shape of the claim holds: the record is checkable where a dependent reads it, not only at the repository root. **HISTORICAL for the `ichiparm.c` and `ichicano.c` lines**, which that copy carried in their earlier states | `local://foundation-expansion-inchi-current-filtered-package-integrity-388.log` |
+| materialised integrity — **HISTORY** | `sha256sum -c UPSTREAM.sha256`, run **inside** the fetched package | **green, exit 0, 109 of 109 `OK`.** Every line of the record has a file behind it in the filtered copy — `INCHI-1-SRC/INCHI_BASE/src/stb_sprintf.h`, `…/src/tbb/tbbmalloc_proxy.h`, `INCHI-1-SRC/INCHI_API/tbb/LICENSE`, the upstream `LICENSE`, and upstream's own README — then at `README.md`, now preserved at `README.upstream.md` — among them, so the shape of the claim holds: the record is checkable where a dependent reads it, not only at the repository root. **HISTORICAL for the `ichiparm.c` and `ichicano.c` lines**, which that copy carried in their earlier states, and for the record as a whole, which is now 110 lines | `local://foundation-expansion-inchi-current-filtered-package-integrity-388.log` |
 | materialised consumer — **HISTORY** | `cd <fetched package>/consumer && zig build run --summary all --cache-dir <scratch>` | **green, exit 0, Debug.** Four identifiers and keys, both checks, `consumer ok`, `Build Summary: 6/6 steps succeeded`. `consumer/build.zig.zon` resolves `.path = ".."`, which inside the fetched tree is the **filtered copy**, so this row compiled the library out of the package rather than out of a checkout. `zig build run` takes the default `-Doptimize`, i.e. **Debug**: it is not a ReleaseSafe row | `local://foundation-expansion-inchi-current-filtered-package-consumer-389.log` |
 | delivery package round, all eight additions — **HISTORY** | `zig fetch` of each `.paths`-filtered package from a build root outside every repository, then `sha256sum -c` inside the copy and `zig build run` in its `consumer/` | **green in all eight**: 8 filtered fetches, 8 integrity runs and 8 copied consumers passed, 1518 integrity records in total, observed `2026-10-02T02:32:12Z`. InChI's own three are `…-delivery-settled-filtered-package-fetch-449.log`, `…-delivery-final-package-integrity-459.log` and `…-delivery-final-package-consumer-460.log`. **HISTORICAL, like the round above it**: every identity in it was taken before this package's documents settled. **The final package round is the driver's to run after they close**, and its result and identity are recorded in the workspace ledger's `cross_test_wave.materialized_packages.inchi` and in `local://foundation-cross-test-package-regression.json`; this file asserts neither | `local://foundation-expansion-package-proof.json` |
 | `check -Dtarget=x86_64-linux-gnu` | `zig build check -Dtarget=x86_64-linux-gnu -j8 --summary all` | **green, exit 0**, 6/6 steps | `…-authorized-patch-cross-x86_64-linux-gnu-367.log` |
@@ -678,6 +1076,10 @@ because that tree moved under them — the `ichiparm.c` patch, then the
 | `check -Dtarget=x86_64-windows-gnu` — **final baseline** | as above | **green, exit 0**, 0.291 s, `Build Summary: 6/6 steps succeeded` | `local://foundation-cross-test-final-baseline-inchi-x86_64-windows-gnu.log` |
 | `check -Dtarget=riscv64-linux-gnu` — **final baseline** | as above | **green, exit 0**, 0.397 s, `Build Summary: 6/6 steps succeeded` | `local://foundation-cross-test-final-baseline-inchi-riscv64-linux-gnu.log` |
 | `check -Dtarget=wasm32-wasi` — **final baseline** | as above | **green, exit 0**, 0.192 s, `Build Summary: 6/6 steps succeeded` | `local://foundation-cross-test-final-baseline-inchi-wasm32-wasi.log` |
+| six-target `check` — **current source-bound baseline** | `zig build check` over the six declared compile targets, one invocation | **green, exit 0**, `Build Summary: 31/31 steps succeeded`, no failing step, all six declared targets seen. Compile and link only; it runs nothing | baseline run `20261005T014547Z-797a73f2`, label `baseline-inchi-check` |
+| 53-cell matrix — **current source-bound run** | `cross-test --jobs 8 --build-jobs 8` | **exit 1**: **12 pass, 33 build-only, 0 build failures, 8 run failures** of 53, 20 cells executed at 22 tests each. The eight failures are the big-endian family — `aarch64_be-linux`, `armeb-linux`, `mips-linux`, `mips64-linux`, `powerpc-linux`, `powerpc64-linux`, `s390x-linux`, `thumbeb-linux` — and in each one test of 22 fails: `tests.test.the molfile route produces PubChem's published identifier and key` returns `error.MissingIdentifier` at `tests.zig:734` with `molfile: status rejected, message` and an empty message under `qemu-mips` and its siblings. The other 14 tests pass in every cell. A build-only cell compiled and had no runner | run `20261004T221720228710Z-45046`, receipt `inchi-53-target-8.json`, source stamp `bc5a479718…` |
+| native final wave — **current source-bound** | `zig build test smoke install -Druntime=false`, both linkages × `Debug`, ReleaseSafe, ReleaseFast, ReleaseSmall | **8 of 8 `exit 0`**, each `30/30 steps succeeded` and `22/22 tests passed`. Native and linked only; nothing was opened through the platform loader | `native-final-evidence/20261004T233628757747Z-69351` |
+| own-loaded wave — **current source-bound** | the same steps under `-Druntime=true`, both linkages × four modes | **8 of 8 `pass`**, each `31/31 steps succeeded` and `22/22 tests passed`. Every cell loaded a provider of kind `own` — the `libinchi.so.1.7.5` this tree's native wave installed — named by absolute path through `INCHI_TEST_PROVIDER`, with nothing read from the ambient environment and no fallback | `loaded-final-evidence/20261004T232823091897Z-23133` |
 | `cross-test`, full 53-platform matrix — **current, on the shipped arrangement** | `cross-test` at the package root, through `cross-test.profile.sh` (`CROSS_BUILD_STEP=test`); each cell is `zig build test -Dtarget=<target> -j4 --summary all --test-timeout 300s` with the harness's own runner policy | **run on the arrangement this file ships, harness `exit_code: 0`.** Run `20261002-071259-33035-20483`, generated `2026-10-02T07:12:59Z`, `target_count: 53`, `target_jobs: 2`, `jobs_per_build: 4`, `build_timeout_seconds: 3600`, `run_timeout_seconds: 300`, `bookkeeping_failure: false`, counts `pass 20`, `fail 0`, `build_only 33`, `partial 0`. **20 cells executed the suite at 16 tests each — 320 tests actually run** — every one `Build Summary: 6/6 steps succeeded; 16/16 tests passed`, `reason: tests_complete`, `command_exit: 0`; the 33 others compiled only, `Build Summary: 5/6 steps succeeded (1 skipped)`, `reason: runtime_unavailable`, `command_exit: 0`. **No foreign BSD, macOS, Mac Catalyst, Windows or WASI binary was executed in any cell** — those 33 are a compile result and are labelled `build_only` because of it | `local://foundation-cross-test-final-current-inchi.json`, per-cell `local://foundation-cross-test-final-current-inchi-<target>.log` |
 | `cross-test`, full 53-platform matrix — **HISTORY, before the guard reorder** | as above | **run, harness `exit_code: 0`.** Run `20261002-040235-43019-14341`, generated `2026-10-02T04:02:35Z`, `target_count: 53`, `build_timeout_seconds: 1800`, counts `pass 20`, `fail 0`, `build_only 33`, `partial 0`, the same 320 executed tests and the same 33 compile-only cells. **Every one of its 53 cells compiled the guard's first placement**, so it is history for the arrangement this file ships; none of its numbers is carried forward and no re-run of it is claimed | `local://foundation-cross-test-matrix-inchi.json`, per-cell `local://foundation-cross-test-matrix-inchi-<target>.log` |
 | `cross-test --list` | `cross-test --list`, in the package root | **green, exit 0**: 53 targets listed in the harness's published order | `local://foundation-cross-test-profile-inchi-list_profile.log` |
@@ -685,9 +1087,27 @@ because that tree moved under them — the `ichiparm.c` patch, then the
 | `bash -n cross-test.profile.sh` | `bash -n <package>/cross-test.profile.sh` | **green, exit 0**. The profile's only assignment is `CROSS_BUILD_STEP=test`; the three checks above read it back through the harness | `local://foundation-cross-test-profile-inchi-syntax.log` |
 | `<sys/timeb.h>` availability, seven `zig cc` probes | `zig cc -target <t> -E -H -include sys/timeb.h -x c /dev/null`, one per target | **5 present, 2 absent**: present on `x86_64-linux-gnu`, `x86_64-linux-musl`, `x86_64-netbsd` and `wasm32-wasi` with no diagnostic, present on `aarch64-freebsd` with upstream's own `warning: "this file includes <sys/timeb.h> which is deprecated"`, **absent on `aarch64-macos` and `x86_64-openbsd`**, both exit 1. A preprocessor probe over the compiler's real search path; **not** a build of this package and not a gate on it | `local://foundation-cross-test-timeb-header-availability.json` |
 | guard placement, two `zig cc` runs of `ichicano.c` at `aarch64-macos` | `zig cc -target aarch64-macos -E -P -std=c11 -fno-strict-aliasing -DTARGET_API_LIB=1 [-DCOMPILE_ANSI_ONLY=1] INCHI-1-SRC/INCHI_BASE/src/ichicano.c`, both against the guard's **first** placement, before it moved | **exit 1 without the `-D`** — `ichicano.c:47:10: fatal error: 'sys/timeb.h' file not found` — and **exit 0 with it**. So the first placement compiled only because the command line agreed with the header, and both records carry the same `output_sha256`, which is **not** a comparison of two successful preprocessings: the failing run wrote a diagnostic, not a translation. What the pair does show is that a compiler-configured ANSI build of this file never needs the header, and that the first placement's success was a property of the `-D` this package supplies rather than of the source. **This is the observation behind moving the guard below `mode.h`** | `local://foundation-cross-test-inchi-guard.json` |
-| `sha256sum -c UPSTREAM.sha256` over the record as it stands | as below | **not quoted in this file.** `UPSTREAM.sha256` holds 109 records and its `ichicano.c` line is the digest re-derived from the shipped file's own bytes; the receipts above verify earlier states of that record and are history for it. The current whole-record replay is the driver's to run and to record, and it is recorded outside this document, in the workspace ledger's `cross_test_wave` — this file states no result, no exit code and no digest for it | — |
+| `sha256sum -c UPSTREAM.sha256` over the record as it stands | as below | **not quoted in this file.** `UPSTREAM.sha256` holds **110** records — the 110th is `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`, upstream's ELF version script, added when shared-library delivery landed — and its `ichicano.c` line is the digest re-derived from the shipped file's own bytes; every receipt above verified a **109-line** record, so none of them is evidence about this one. The current whole-record replay is the driver's to run and to record, and it is recorded outside this document, in the workspace ledger's `cross_test_wave` — this file states no result, no exit code and no digest for it | — |
 | what is still open over the shipped arrangement, and who owns it | `sha256sum -c UPSTREAM.sha256` over the current record, `zig fetch` + integrity + consumer over the settled documents, `zig build -fsys=inchi` | **owned elsewhere, and claimed by nobody here.** The current 53-cell matrix, the final six-target baseline and the stable native wave above all ran on the arrangement this file ships. The whole-record integrity replay and the final filtered package round are recorded by the driver in the workspace ledger's `cross_test_wave.materialized_packages.inchi` and in `local://foundation-cross-test-package-regression.json`, after these documents close; no result and no identity for either is asserted here, because this file's own bytes contribute to that identity. See § Cross-target checks for what the guard move does and does not touch — no chemistry, algorithm, ABI, allocator, option, default, flag or build mode changes with it. `zig build -fsys=inchi` has **not** been run in this workspace and is claimed by no row below | — |
 | `zig build -fsys=inchi` | as in § Build modes | **not run.** It needs an installed `libinchi` carrying its own matching `inchi_api.h` and `ixa.h`; no such pair was available here, so no result is claimed for it | — |
+| `zig build -Dlinkage=dynamic`, all four optimize modes | `zig build install -Dlinkage=dynamic -Doptimize=<mode>` | **current, source-bound** | the two eight-cell waves each ran four `-Dlinkage=dynamic` cells and every one exited 0 with `22/22 tests passed`, so a shared `libinchi` is built, installed and exercised in all four modes. The two std spellings this row used to carry as unconfirmed — `Step.Compile.setVersionScript` and `Build.installFile` — are settled by those sixteen configurations. The default linkage is unchanged at `static` |
+| installed shared closure and a C consumer against it | `zig cc … -linchi …` after a shared install | **partly current** | the shared closure and its generated `inchi.pc` were installed sixteen times, so the file and the soname links exist as written. **No C consumer has linked against them**, and that half of the row is still withheld |
+| `zig build -Druntime=true` and every runtime-loaded consumer check | `zig build test smoke install -Druntime=true`, then each consumer-behaviour gate | **partly current** | the own-loaded wave ran this route in all four modes and both linkages: eight cells, eight `pass`, `31/31 steps` and `22/22 tests` each, every one loading an own provider named by absolute path with no fallback. The **consumer-behaviour** gates, the compatible-external provider and the loader's failure paths have no receipt |
+| `runtime-test` | `zig build runtime-test -Druntime=true`, with `INCHI_TEST_PROVIDER` and `INCHI_TEST_ALIEN` set | **`PENDING-VERIFICATION`** | the step exists only under `-Druntime=true`. It skips nothing when either variable is missing, so it cannot be run in a context that cannot name both. **Not in CI**, and the workflow says why: `INCHI_TEST_ALIEN` has to be a loadable object that is not `libinchi`, and inventing one here would be fabricating a fixture this repository does not have |
+| `misuse`, all three modes | `misuse pre-load`, `misuse after-load <path>`, `misuse linked-load` | **`PENDING-VERIFICATION`** | built and installed by `zig build` in **every** configuration. **No step runs it and asserts an exit status**, because two of the three modes are supposed to stop and which two depends on the configuration. `zig build` owes that it produces the program; running the commands is the caller's. Describing a harness here that does not exist would be inventing one |
+| `zig build consumer -Druntime=true -- --provider <path>` | — | **`PENDING-VERIFICATION`** | real only because `consumer/build.zig` now forwards `b.args` to the run step. Before that, the documented command line would have silently done nothing and the environment variable was the only way to name a provider |
+| `nix build .#static` and `nix build .#shared` | — | **`PENDING-VERIFICATION`** | no `nix` evaluation and no `nix` build of `package.nix` or `flake.nix` has been run in this workspace. The `nixpkgs` input is pinned twice: by revision in `flake.nix:15`, and by the committed `flake.lock` at the package root pinning `c7def046b9a883d46974757852106483d741586f` with its `narHash` — the same rev. That lock is now in `.paths`, so a `.paths`-filtered copy carries `flake.nix` and the lock that pins it together. The row is **unrun, not unpinned**, and no `nix` result of any kind is claimed |
+| `devenv shell` | — | **`PENDING-VERIFICATION`** | no `devenv` evaluation or shell entry has happened. `devenv.yaml` names a pinned input by revision, `cachix/devenv-nixpkgs` at `c2f38fe7f9e04d9aadd354d380f2bd40531d9737`, and **there is no `devenv.lock` in this repository** — none is invented to match the flake's, and the revision pin is what the shell resolves from |
+
+Each of the four rows marked **current, source-bound** holds one source stamp
+for its whole run, and the stamps differ from each other and from every row
+above. A build-graph, header, helper or normalisation edit made after a stamp
+describes a tree that row never saw, and no row here verifies one. The
+whole-record `sha256sum -c UPSTREAM.sha256` over the 110-line record, the final
+filtered package round, `zig build -fsys=inchi`, the Nix derivations, the devenv
+shell, a foreign-compatible provider and the loader's failure, retry,
+idempotence and provider-change paths are all still `PENDING-VERIFICATION`, and
+this table quotes no result for any of them.
 
 `CHANGELOG.md`, `FORK-NOTES.md`, `UPSTREAM.md` and `NOTICE.md` link to this
 table instead of repeating it. When a claim and this table disagree, this table
@@ -835,7 +1255,10 @@ shifted by nine. The banner and `OpenFiles` numbers above are therefore
 above, and the `:2712`, `:2718` and `:2901` figures quoted from the pre-patch
 diagnostics — is a **pre-patch** citation.
 
-**The record.** `UPSTREAM.sha256` still holds **109 records** and carries the
+**The record.** `UPSTREAM.sha256` holds **110 records** — it was 109 when this
+was written, and grew by the ELF version script
+`INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` when shared-library delivery
+landed, so no receipt below covers it — and carries the
 **patched** digest for that one line; upstream's digest for the same path, and
 the file's byte count either way, are written out in `UPSTREAM.md`
 § The two patched source files. `sha256sum -c UPSTREAM.sha256` was green over
@@ -908,7 +1331,8 @@ it about a copy made **from `.paths` alone** at the moment it was taken. Source
 closure through the manifest was observed rather than argued: the 105 native
 files this package ships across the two source directories, the Apache-2.0 text
 that travels with the Intel TBB header, the upstream MIT text, upstream's own
-`README.md` and the independent fixture were all present in the fetched tree,
+README — then at `README.md`, now preserved at `README.upstream.md` — and the
+independent fixture were all present in the fetched tree,
 and a consumer built there resolved the library through `dep.module("inchi")`
 with no source-tree path available to it. **None of that changed with a later
 edit to a patched C file or to this document**, and none of it is withdrawn.
@@ -932,13 +1356,30 @@ and nothing in these rows claims it should.
 
 ### What the native rows do and do not establish
 
-The native test rows ran every test in `tests.zig` — all sixteen, in one binary
-each, against the translated header and the in-tree archive, **three times in
-Debug and three times in ReleaseSafe**: the `-365`/`-374` pair, the `2026-10-02`
+The native test rows ran **every test `tests.zig` declared at the time**, in one
+binary each, against the translated header and the in-tree archive, three times
+in Debug and three times in ReleaseSafe: the `-365`/`-374` pair, the `2026-10-02`
 wave, and the stable wave. Sixteen per mode per wave, **96 native test
-executions in all**, and 320 more from the twenty matrix cells that ran in each
-of the two full-matrix runs. Only the last of those three waves compiled the
-file as it ships; the other two are history and the table says so row by row.
+executions in all**, plus 320 per full-matrix run from the twenty cells that ran
+the suite, across two full-matrix runs. Every one of those numbers is a count of
+a **sixteen-test** `tests.zig`, and every row that prints one is marked
+`HISTORY`.
+
+**`tests.zig` as it ships declares 22 top-level test blocks** — `:185, 213, 232,
+259, 274, 302, 322, 340, 400, 428, 446, 464, 488, 526, 556, 574, 599, 652, 672,
+707, 753` and `:810`. Six of them landed after the last recorded wave: the two
+extended polymer/V3000 routes at `:753` and `:810`, the AuxInfo-refusal residue
+test at `:652`, the molfile refusal/residue test at `:707`, and the tests at
+`:526` and `:574`. **No receipt in this file has executed the file as it ships,
+and no 22-test result is claimed anywhere in it.** The six counts above are
+history, not a current baseline, and the two "stable wave" rows no longer call
+themselves the current native evidence for the file as it ships — their own
+`expected_tests: 16` is the evidence that the tree they compiled declared
+sixteen.
+
+**What does not move is compile coverage.** The six-target `check` baseline and
+every `build_only` matrix cell are compile results; adding a test does not change
+what compiles, so those rows stay current and the table says so row by row.
 
 The install step is the one that proves the artifact
 itself: it produced `libinchi.a` and both public headers, and the C/IXA rows then
@@ -974,10 +1415,9 @@ The consumer was corrected; nothing about the library was loosened to suit it.
 sha256sum -c UPSTREAM.sha256
 ```
 
-**109 records; the earlier green replay is history.** `sha256sum -c
-UPSTREAM.sha256` reported 109 records, 109 `: OK`
-lines and no failures, exit 0, the last of them
-`INCHI-1-SRC/INCHI_API/tbb/LICENSE: OK`
+**The green replay below is history; the record is now 110 lines.** `sha256sum -c
+`UPSTREAM.sha256` reported 109 records, 109 `: OK` lines and no failures, exit 0,
+the last of them `INCHI-1-SRC/INCHI_API/tbb/LICENSE: OK`
 (`local://foundation-expansion-inchi-authorized-patch-integrity-109-364.log`).
 That receipt was taken with `ichiparm.c` patched and **`ichicano.c` still at
 upstream's digest**: both `ichicano.c` digests since then were re-derived by
@@ -1034,9 +1474,15 @@ do and do not prove.
 
 ## Licence
 
-Upstream's InChI library is `MIT`; the text ships verbatim as `LICENSE` and 100
-of the 105 shipped native files carry the same notice. Three files in the
-shipped set are not simply MIT and are not claimed to be:
+Upstream's InChI library is `MIT`, and **not bare MIT**: on top of the
+permission grant, upstream's own bytes carry an attribution-notice obligation
+(`inchi_api.h:29-37`, `LICENSE:12-13`) and a **compulsory project banner** —
+the usage banner that identifies the software version, printed by
+`HelpCommandLineParms` in `ichiparm.c` and carried in every identifier's `1S`
+prefix. Both are recorded in [`NOTICE.md`](NOTICE.md) § The grants, and which
+applies where, with their exact line citations. The text ships verbatim as
+`LICENSE` and 100 of the 105 shipped native files carry the same notice. Three
+files in the shipped set are not simply MIT and are not claimed to be:
 `sha2.c`/`sha2.h`, whose MIT grant upstream qualifies as valid *only in
 combination with the InChI package*; `stb_sprintf.h`, `MIT` **or** the Unlicense
 — its own licence block offers `ALTERNATIVE A - MIT License` and
@@ -1062,10 +1508,10 @@ narrowed or replaced by this documentation; see [The authorised `ichiparm.c` pat
 landed and covered](#the-authorised-ichiparmc-patch-landed-and-covered) for
 what the patch changed and what it deliberately did not.
 
-**No term is asserted for this fork's own files.** `build.zig`, `zig/*.zig`,
-`tests.zig`, `smoke.zig`, `consumer/`, `.github/workflows/verify.yml` and these
-records were written here, and nobody authorised this fork to grant them to
-anyone. They are recorded as **unassigned**: no term is stated for them, and
-none may be inferred from the absence. Upstream's terms are unaffected and are
-not restated, narrowed or widened by that. Attribution, the licence split and
-every file this fork adds or edits are in [`NOTICE.md`](NOTICE.md).
+**This fork's own files are under `LicenseRef-InChI-MIT-Conditional`** — the
+MIT text plus the attribution-notice and package-coupling conditions, with the
+owner authorization behind it. They were previously recorded here as
+**unassigned**, and that is what that state was. The grant is defined in
+[`FORK-LICENSE.md`](FORK-LICENSE.md) and inventoried in
+[`NOTICE.md`](NOTICE.md); no copyright identity is asserted for this fork,
+because none was supplied. None of this changes an upstream term.

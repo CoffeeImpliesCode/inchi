@@ -15,14 +15,16 @@ this package's history were found by reading, not by a gate.
 
 ### 1. What the integrity record covers, and what it does not
 
-**Decision.** `UPSTREAM.sha256` hashes the 105 upstream files in the two
-directories `build.zig.zon` `.paths` names, plus upstream's
-`INCHI-1-SRC/INCHI_API/tbb/LICENSE`, plus `LICENSE`, plus upstream's `README.md`,
-plus the one independent fixture the tests embed: **109 records**. It hashes
-no file this fork wrote *except* the one upstream file this fork patched on
-purpose, `ichiparm.c`, which is the subject of decision 13 and is named here
-only so the "never" in the original wording of this entry is not read as still
-standing.
+**Decision, as it now stands.** `UPSTREAM.sha256` hashes the 105 upstream files
+in the two directories `build.zig.zon` `.paths` names, plus upstream's
+`INCHI-1-SRC/INCHI_API/tbb/LICENSE`, plus upstream's ELF version script
+`INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`, plus `LICENSE`, plus
+upstream's README — now under the preserved path `README.upstream.md` — plus
+the one independent fixture the tests embed: **110 records**. It hashes no file
+this fork wrote *except* the two upstream files this fork patched on purpose,
+`ichiparm.c` and `ichicano.c`, which are the subjects of decisions 13 and 17
+and are named here only so the "never" in the original wording of this entry is
+not read as still standing.
 
 **Why that set.** It is exactly the set a dependent receives and the build
 compiles, so `sha256sum -c UPSTREAM.sha256` works in a clone *and* in an
@@ -381,19 +383,25 @@ whole record: 109 records, no failures, exit 0
 covered all 109 as of that patch and are history for the `ichicano.c` line since
 decision 17. The lesson is kept as L15.
 
-### 16. No licence is asserted for this fork's own files
+### 16. No licence was asserted for this fork's own files — superseded by 21
 
-**Decision.** `build.zig`, `zig/*.zig`, `tests.zig`, `smoke.zig`, `consumer/`,
-the workflow and these five documents are recorded as **unassigned**. The
-earlier sentence claiming they were contributed under MIT is withdrawn.
+**Decision, as it was.** `build.zig`, `zig/*.zig`, `tests.zig`, `smoke.zig`,
+`consumer/`, the workflow and these five documents were recorded as
+**unassigned**, and the earlier sentence claiming they were contributed under
+MIT was withdrawn.
 
 **Why.** Nobody authorised this fork to grant its own files, and the package is
-not MIT-only any more — it now travels an Apache-2.0 file, so "the rest of the
-package is MIT" is no longer even a true premise for the inference. Silence is
-not a grant, and a reader is told so rather than left to supply one.
+not MIT-only — it travels an Apache-2.0 file, so "the rest of the package is
+MIT" was never a true premise for the inference. Silence is not a grant, and a
+reader was told so rather than left to supply one.
 
-**Target bound.** Any fork that was created inside a workspace where nobody
-asked for a licence grant. Upstream's own terms are untouched by this entry.
+**Superseded by decision 21, which is not a retraction.** The owner authorised
+a licence for the fork-authored additions. What this entry said about the state
+*before* that authorization is history and stays true of that state; what it
+claimed about the present no longer holds.
+
+**Target bound.** Any fork created inside a workspace where nobody asked for a
+licence grant. Upstream's own terms are untouched by this entry and by 21.
 
 ### 17. The dead include is guarded, not deleted and not replaced
 
@@ -557,6 +565,14 @@ macOS, Mac Catalyst, Windows or WASI binary was executed anywhere in it**
 run `20261002-040235-43019-14341`, the same counts and the same 320 executed
 tests — is history for this placement and stays history.
 
+**Superseded as current, and by what.** Every `16` above is the suite the file
+declared on `2026-10-02`; `tests.zig` as it ships declares **twenty-two**
+top-level test blocks, six of them added by the migration waves after those
+waves ran. All three receipts are therefore **history for the file as it
+ships** — the `check` baseline still describes the guard placement, because
+compile coverage does not move when a test is added, but the wave's and the
+mattery's test totals do not describe this file. L29 carries the correction.
+
 **Handed over rather than claimed.** Two closures belong to the driver, and this
 package states no result for either. The first is the whole-record
 `sha256sum -c UPSTREAM.sha256` replay over the re-derived `ichicano.c` line:
@@ -677,6 +693,38 @@ declared a linkage would need its own `need_cross_libc`, and the musl half
 would start contributing.
 
 The lesson is L22.
+
+### 21. The fork grant is MIT plus upstream's own two conditions, and no identity
+
+**Decision.** [`FORK-LICENSE.md`](FORK-LICENSE.md) defines
+`LicenseRef-InChI-MIT-Conditional` for every file this fork adds or edits: the
+MIT text verbatim, **plus** (a) the InChI attribution-notice obligation and the
+compulsory project banner, both quoted from upstream's own bytes, and (b)
+upstream's coupling condition from `sha2.h:12-13` — redistribute and modify
+only as a part of the InChI software package. The copyright line reads "the
+authors of this `inchi` Zig SDK package", because **no personal or corporate
+identity was supplied and none is invented**; the owner substitutes that line
+before publication.
+
+**Why `LicenseRef-` and not `MIT`.** L13 already established that this package
+is not single-licensed. Adding to that, a scanner that finds `MIT` stops at the
+permission grant and misses both conditions. A `LicenseRef-` identifier is
+SPDX's own mechanism for exactly this, and it is defined in full in this
+repository, so the identifier is self-contained rather than a lookup.
+
+**Why the banner condition is not decoration.** It is the reason the
+authorised `ichiparm.c` patch substitutes the pinned source tag for
+`__DATE__`/`__TIME__` instead of deleting the banner. A patch that removed the
+version stamp from the usage text would satisfy reproducibility by breaking
+identification. The two requirements agree, and the licence record is where
+that agreement is written down.
+
+**Target bound.** Any fork whose upstream ships a permissive licence *plus*
+file-level obligations. The general form: a fork's own grant should match the
+**primary** upstream term including its conditions, not the shortest common
+denominator of the permissions involved. Where no copyright holder is
+established, an identity placeholder plus an explicit statement that none is
+asserted beats inventing one.
 
 ## Lessons
 
@@ -859,6 +907,12 @@ The lesson is L22.
   above are kept as what was decided *at the time*, on the evidence available
   then.
 
+  Every "shipped placement" above is history for the file as it ships in that
+  second sense too: the file declared sixteen tests then and declares
+  twenty-two now (L29). The guard placement these receipts cover is still the
+  one in the tree; their test totals are not this file's test totals, and no
+  test pins a count.
+
 ### L10 — An integrity record over a subset and an archive digest over the whole tree are different numbers
 
 * **Condition.** The parent recorded a `git archive` SHA-256 of the full
@@ -1019,7 +1073,9 @@ The lesson is L22.
   is upstream's own condition rather than a bet on this package's `-D`. That
   placement has since been compiled — the six-target `check` baseline green in
   all six cells including this one, and the stable native wave 16/16 in Debug
-  and 16/16 in ReleaseSafe plus smoke, install and consumer — while the
+  and 16/16 in ReleaseSafe plus smoke, install and consumer — **history for the
+  file as it ships**, since the file declares twenty-two tests now and those
+  sixteen are the ones it declared then (L29) — while the
   53-cell matrix, which compiled the first placement, stays history for it. L20
   records what the original header survey got wrong.
 
@@ -1172,3 +1228,315 @@ The lesson is L22.
   executed in this workspace** — no foreign-architecture consumer has run here,
   and no fresh native, matrix or package gate covers this change. Treat the
   mechanism as read and the behaviour as unproven.
+
+### L23 — Relocating a pinned file keeps the digest and changes the path, and only one of those is free
+
+* **Condition.** An integrity record pins upstream's `README.md` by digest. The
+  package then needs a `README.md` of its own at that same path, so upstream's
+  bytes move to `README.upstream.md`.
+* **Symptom.** **Not observed** — no gate has run over the record since. The
+  failure mode is visible on inspection: a record line naming a path that no
+  longer holds those bytes fails, and a record that is *silently* re-hashed
+  against the new file pins the wrong document and looks green.
+* **Fix.** Move the bytes, then rename the **record line** to the path the bytes
+  are read from and leave its digest exactly as it was. The digest is a
+  property of the content; the path is a property of the layout. Say in the
+  record's header why the path moved and that the digest did not, and say in
+  the prose that every older receipt showing `README.md: OK` is a receipt about
+  those same bytes under their old name. Then put the new fork `README.md` on
+  the **absent** list, because it is a file the fork writes and every other
+  fork-written file is already there.
+* **Target bound.** Any integrity or provenance record over a vendored tree
+  where a file has to change name. The general form is L15's one step further
+  on: renaming a pinned file is a record edit, and the edit that keeps the
+  digest is the one that touches only the path.
+
+### L24 — A development shell that contains the package is a build step you pay to open a terminal
+
+* **Condition.** Adding `callPackage ./package.nix { }` to a devenv or flake
+  shell's `packages`, next to the toolchain.
+* **Symptom.** **Not observed.** The cost is structural: entering the shell
+  builds the library, on first entry and again after every cache eviction, and
+  it does so *before* the developer has asked to build anything.
+* **Fix.** `packages` carries tools. The library is built by `zig build` from
+  the repository's own sources inside the shell, which is what a developer
+  wants on iteration, and by `nix build` when they want the packaged output.
+  Declare the scripts (`build`, `test`, `check`) so the intended commands are
+  one word each and cannot drift from what the shell can actually do.
+* **Target bound.** Any language whose development loop is "compile the
+  sources in this working tree", which is most of them. The general form: a
+  shell is an environment; making it also a product means the environment is
+  unavailable whenever the product cannot be built.
+
+### L25 — One `builtins.getEnv` in a flake forces `--impure` on everyone downstream
+
+* **Condition.** A devShell that reads `ZIG_GLOBAL_CACHE_DIR` or any other
+  environment variable at evaluation time to "helpfully" default a cache path.
+* **Symptom.** **Not observed here.** The effect is at the consumer: every
+  `nix build` and every other flake that pulls this one in now needs
+  `--impure`, or fails, and a build that needs a flag is not hermetic.
+* **Fix.** Set nothing. A committed flake must not read the environment of the
+  machine that evaluates it; cache locations belong to the caller, who already
+  has them exported. The same applies to a Nix derivation: point its caches at
+  `$TMPDIR` inside the build rather than at a path the developer's shell
+  happens to have.
+* **Target bound.** Any committed Nix expression that will be evaluated by
+  someone else. The general form: an impure read is cheap to add and makes the
+  whole output unusable as a pinned input.
+
+### L26 — A step that forwards an option into a nested build must accept the option too
+
+* **Condition.** A `consumer` step that runs `zig build … -Dlinkage=<v>` as a
+  subprocess, where the consumer package's own `build.zig` has never heard of
+  `-Dlinkage`.
+* **Symptom.** **Not observed.** Either failure is silent in the same way: the
+  nested build rejects the unknown `-D` and the run stops, or it ignores the
+  flag and the gate **passes against the wrong artifact** — the outer graph
+  builds a shared library while the consumer links the static one, and the
+  green result is about a build nobody asked for.
+* **Fix.** The nested package's `build.zig` declares the same option and passes
+  it through to `b.dependency(…, .{ …, .linkage = … })`. Forwarding an option
+  is an API: whoever receives it must be able to name it.
+* **Target bound.** Any parent build that shells out to a child build with
+  `-D` options. The general form is L22's one level up: a gate proves the
+  artifact the *innermost* build made, and every layer between the flag and the
+  artifact has to carry it.
+
+### L27 — A file the linker reads is a shipped file, whether or not anyone decided that
+
+* **Condition.** A build starts passing a linker version script — here
+  upstream's own `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` — to control
+  the exported symbol set of a shared library. The file lives in a directory
+  that the package's `.paths` treats as "carried for provenance".
+* **Symptom.** **Not observed** — the packaging and integrity gates for this
+  change have not run. The defect is a configure-time one: `.paths` is a hard
+  filter (L12), so a build that reads a file the package does not ship works in
+  a checkout and fails for the first dependent.
+* **Fix.** Promote the file into `.paths` and hash it in the integrity record,
+  with a header line saying which linkage and which targets read it. Then move
+  it out of the "carried but not part of the package" table and into the
+  shipped one, and update the record's own count in the same change.
+* **Target bound.** Any vendored tree where a build reads a file that was
+  previously kept only for provenance. The general form: "we ship it because
+  the build reads it" is a stronger statement than "we ship it because a
+  licence obliges us to", and it has to be checked every time the build graph
+  starts reading a new input.
+
+### L28 — A shell `${…}` inside a Nix indented string is a Nix expression until you escape it
+
+* **Condition.** `installPhase = '' … -j"${NIX_BUILD_CORES:-1}" … ''`. Inside a
+  Nix indented string, `${` opens a Nix interpolation, so the shell's default
+  expansion is parsed as Nix.
+* **Symptom.** **Observed in this workspace, on a sibling SDK, not here.** A real
+  canonical `devenv` evaluation of BLAKE3 failed on exactly this line; it was
+  reported to this package's owner while this line existed here too.
+* **Fix.** Write the Nix escape for a literal dollar-brace: `-j"''${NIX_BUILD_CORES:-1}"`.
+  Nix collapses `''${` to `'${` and the shell sees what it expects. The
+  counterpart trap is a **comment** that contains the escape sequence: inside
+  `''…''`, writing `''${` to describe the escape terminates the string. Describe
+  the escape in words instead of reproducing it.
+* **Target bound.** Any Nix string that contains a shell expansion — a job
+  count, a cache path, a hook-provided variable. The general form: Nix and the
+  shell share `${…}` syntax and disagree about what it means, so every
+  occurrence in an indented string must be read as Nix until proven otherwise.
+
+### L29 — A receipt labelled "the file as it ships" stops being that the first time a test is added
+
+* **Condition.** A package's evidence table records a native wave as
+  `expected_tests: 16`, `observed_tests_passed: 16`,
+  `verification_status: success`, under the label "stable wave, on the shipped
+  arrangement", and a later prose entry repeats it as "remains current on the
+  same tree". Six further test blocks then land in the same file, on their own
+  wave, for reasons that have nothing to do with the recorded run.
+* **Symptom.** **No failure, anywhere — which is the problem.** Every recorded
+  number stays exactly as true as it was: those waves really did execute
+  sixteen tests and really did exit 0, and nothing in the receipts is wrong.
+  What is wrong is the *currency*. `tests.zig` as it ships declares
+  twenty-two top-level test blocks, so no receipt in this package has ever
+  executed the six migration-wave additions, and the six most recently added
+  behaviours — the two extended polymer/V3000 routes and the two error-residue
+  paths among them — are treated as gated by a run that never reached them.
+  A reader checking the file against the table finds the gap; a reader checking
+  the table alone finds a green suite one entry shorter than the source.
+* **Fix.** Keep the receipts and stop claiming they are current. State the
+  count that was actually run as *the count the file declared on that date*,
+  point at the entry that carries the correction, and say plainly which
+  directions no run has covered. Do not restate a historical row as a
+  `SYMPTOM` or a failure: it was a real green run of a real tree, and calling
+  it red would be the same error in the other direction. The correction is
+  `SOURCE-CONFIRMED` — the count is read out of `tests.zig` — and stays
+  `PENDING-VERIFICATION` until a wave runs the suite the file ships.
+* **Target bound.** Any package that grows its test file after its evidence
+  table was written, in any language and any build system, where the table
+  reports test totals rather than a pass/fail bit. The bound is not the
+  platform; it is the length of the gap between "the suite as it stood" and
+  "the suite as it ships". The general form is L18's, one axis further on:
+  patching a pinned file invalidates the digests recorded against it, and
+  adding a test invalidates the totals recorded against the suite — and
+  neither edit is visible in the receipt that recorded it.
+* **No test for this.** The count is recorded in prose, on purpose. A
+  permanent test that asserts how many tests the file declares would fail on
+  the next test anyone adds, and it would prove nothing about the library: it
+  pins a number, not a behaviour. The one test that does belong here is the
+  one that exercises the behaviour the added test blocks cover, and those exist
+  already.
+
+### L30 — A checked cast on a caller-writable signed field makes one call's answer depend on `-Doptimize`
+
+* **Condition.** A public struct re-exported unchanged from a C header, so its
+  count fields keep their C types: an `AT_NUM` is a `signed short`
+  (`inchi_api.h:124`), and on a caller-writable struct every value that type
+  admits is representable. A private helper converted that count with a bare
+  `@intCast`, and the public function that owned the bound called the helper
+  *before* its own capacity comparison.
+* **Symptom.** **Observed, and the two modes disagreed.** With `num_bonds = -1`
+  written by hand, `connect` answered two ways. Debug and ReleaseSafe: **ABRT**,
+  "integer does not fit", at the helper's `@intCast` — `bg719`, reported at
+  `zig/root.zig:1721` and reached from `connect` at `:1136`. ReleaseFast and
+  ReleaseSmall: the unchecked cast wrapped the value, so the input to everything
+  downstream was one the language does not define, and the process **did not
+  terminate** — `bg721` was still running single-threaded when the driver
+  stopped it. No exit status and no output were obtained from that run, so
+  nothing is claimed about what it would have printed. Neither answer was the
+  module's declared error, and the module header had promised that each bound is
+  "checked where a caller can act on it, with an ordinary comparison rather
+  than an assertion".
+* **Fix.** Make the conversion total and put the range check in front of it.
+  `used()` answers 0 for a non-positive count — the same `count <= 0` guard its
+  sibling `borrowedArray` already used — so it cannot trap on a value the field
+  is declared to hold. A new private `countOutOfRange` then refuses anything
+  outside `0..max_bonds_per_atom`, and the public function calls it for both
+  ends before either side is written. The refusal **reuses an error that
+  already exists**, widening its documentation from the ceiling to the whole
+  range; no error was added and no signature changed.
+* **Why the same error is honest here.** The API states the range itself at
+  `inchi_api.h:171` — "Index j is in the range 0 <= j <=
+  (atom[i].num_bonds-1)" — and the compiled closure reads the field as
+  `for (j = 0; j < num_bonds; j++)` (`INCHI-1-SRC/INCHI_API/libinchi/src/ichilnct.c:297`).
+  A negative count is not a shorter list; it is a record that reads nothing, so
+  there is no entry to append to. Refusing it leaves the caller's bytes exactly
+  as written, which repairing it would not.
+* **Target bound.** Any binding that re-exports a C struct with a signed count
+  in it, in any language whose checked and unchecked integer conversions differ
+  by optimisation mode — which is Zig, between `ReleaseSafe` and
+  `ReleaseFast`. The bound is not the platform and not the library: it is a
+  public type whose field range is wider than the invariant the public function
+  enforces. The general form is L21's with the direction reversed — L21's
+  guard tested a macro the file had not included, and this one trusted that the
+  only caller of the reader was inside a range test it had not yet reached.
+* **The proof boundary, stated plainly.** The Debug half is a driver
+  observation of the defect. The ReleaseFast half is a driver observation of a
+  non-terminating run and nothing more: no exit status, no output, no
+  diagnosis of what it was doing, and no claim that the unchecked cast is the
+  cause of the non-termination — only that the fix removes the negative value
+  before any conversion sees it. Nothing in this package has been built or run
+  since the change.
+
+### L31 — A header namespace is an upper bound, not a producer promise
+
+* **Condition.** `RetValMol2INCHI` declares separate read and generation
+  failure codes, and the facade retains both in `MolfileStatus`.
+* **Symptom, source-confirmed.** The type documentation promised those stages
+  could be distinguished by status, but the pinned v1.07.5
+  `MakeINCHIFromMolfileText` maps reading failures (`inchi_dll_b.c:184-197`)
+  and generation failures (`inchi_dll_b.c:229-232`) to the same
+  `mol2inchi_Ret_ERROR`. Both become `.rejected`; the producer does not emit
+  the header's codes 4 and 5.
+* **Fix.** Keep the complete header namespace and correct the type, arm and
+  consumer documentation. No new error, inferred stage or additional API
+  claims information that the producer does not supply. The existing broken
+  counts-line test already expects `.rejected` and is unchanged.
+* **Target bound.** The pinned InChI v1.07.5 molfile producer, in linked and
+  runtime-loaded routes. Another producer may use more of the header's
+  namespace; the facade continues to represent it without a compatibility
+  alias or shim.
+* **Evidence boundary.** Native assignments remain source-confirmed. On
+  2026-10-04, the driver's `bg1114` after wave observed the malformed-molfile
+  control return raw 2 and typed `.rejected` serialized as 2, exit 0, under
+  Debug/ReleaseSafe and static/dynamic linkage. This verifies that control,
+  not generation-failure reachability or non-emission of codes 4/5. Receipt:
+  `/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/after/summary.json`.
+  `CHANGELOG.md` §42 records the exact sample command and receipt.
+
+### L32 — A nested consumer needs both argument hops and the outer compiler configuration
+
+* **Condition.** An SDK starts a second `zig build` for its consumer package.
+  Forwarding the child's `b.args` to its executable is only half the route.
+* **Symptom, source-confirmed.** InChI's outer helper dropped the caller's
+  trailing arguments, including the documented provider path. It also left
+  global-cache selection, job width and summary mode to the child's defaults.
+  No runtime failure or completed load is claimed by this source record.
+* **Fix.** Append `--` and the outer `b.args` verbatim, last. Emit fixed
+  `-j8`, two-token `--summary all` and the inherited global cache path via
+  two-token `--global-cache-dir`. Preserve the existing local `consumer`
+  cache subdirectory and all resolved SDK, target, CPU and executor choices.
+  Preserve `hostCanExecute` and its compile/install-only branch.
+  Relay a non-default `b.install_prefix` as two-token `--prefix` before the
+  argument handover, making relative paths absolute against the outer build's
+  cwd. Preserve omission for the default outer `zig-out` prefix.
+* **Target bound.** The nested InChI consumer route under the pinned Zig
+  0.16.0 build runner, in linked and loaded configurations. Directly driving
+  `consumer/build.zig` already forwarded its own arguments; this correction
+  changes the missing outer hop, not that standalone interface.
+* **Evidence boundary.** Integrated the build owner's source-only record.
+  `CHANGELOG.md` §43, the prefix relay in §45 and the corrected README argument
+  description remain `PENDING-VERIFICATION`. The parent owns real native,
+  foreign-executor, prefix and provider runs; no permanent forwarding/copy
+  test was added.
+
+### L33 — A correct verdict tag can carry the wrong native number
+
+* **Condition.** A facade declares a signed, non-exhaustive enum for native
+  return codes but leaves named members implicitly numbered. The native
+  taxonomy is not sequential: InChI key verdicts are 0, -1, 1, 2 and 3.
+* **Symptom, observed before by the driver.** In the parent's `bg1082` wave,
+  `checkKey` returned tag `non_standard` for a native-valid non-standard key,
+  but `@intFromEnum` returned 1 while the native call returned -1. The
+  Debug/static sample ended in `TypedSerializationMismatch`. Across
+  Debug/ReleaseSafe and static/dynamic linkage, the wave reported 16 expected
+  numeric defects and 8 passing standard-key or malformed-molfile rows.
+* **Fix.** Assign each named `KeyVerdict` its explicit native code, retaining
+  `c_int` and `_`. Keep the existing classification mapping and symbolic
+  callers. Assert numeric serialization of actual verdicts in the existing
+  semantic tests; a tag-only assertion cannot distinguish this defect.
+* **Target bound.** InChI's pinned v1.07.5 `RetValCheckINCHIKeyv` contract,
+  on linked and runtime-loaded routes. Any binding whose users log, marshal
+  or compare native numeric codes has the same boundary even when all
+  symbolic classification tests succeed.
+* **Evidence boundary.** The parent supplied actual before and after reports.
+  On 2026-10-04, `bg1114` observed all 24 after rows passing, exit 0:
+  Debug/ReleaseSafe, static/dynamic linkage, five key verdict cases and the
+  malformed-molfile control. Native and serialized key codes now agree at
+  0, -1, 1, 2 and 3. This scoped `OBSERVED` result establishes neither the
+  full suite nor the current 53-target, runtime-loader or nested-helper/prefix
+  gates. No worker gate ran; API and tests remain frozen. See
+  `CHANGELOG.md` §44 for the exact sample command. After receipt:
+  `/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/after/summary.json`.
+  Before receipts:
+  `/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/before/summary.json`;
+  exact sample:
+  `/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/before/Debug-static-nonstandard.json`.
+
+### L34 — A source stamp is part of a result, not a footnote to it
+
+* **Condition.** A workspace edits a package's build graph while driver runs
+  are in flight, so each receipt describes one tree and the tree moves.
+* **Symptom.** Every matrix cell here can be read as a claim about the package
+  as it ships, because the receipt records no stamp a reader could check. Two
+  runs with identical counts can describe different code.
+* **Fix.** Each gate records one source stamp for its whole run and this file
+  quotes the first hex of it beside the numbers, so a later edit cannot inherit
+  a result it did not produce. Build-only stays build-only: a cell that compiled
+  with no runner is coverage, never a passing test, and a cell whose tests were
+  skipped is recorded as skipped.
+* **Target bound.** Any package whose source moves while gates run. The cost is
+  one line per receipt and the benefit is that "current" has a definition.
+* **Evidence boundary.** Four runs for this package, each with its own stamp:
+  the six-target `check` baseline of 2026-10-05
+  (`20261005T014547Z-797a73f2`, exit 0, `31/31 steps`), the 53-platform matrix
+  of 2026-10-04 (`20261004T221720228710Z-45046`, `bc5a479718…`, 12 pass,
+  33 build-only, 8 run failures), the native final wave
+  (`20261004T233628757747Z-69351`, eight `exit 0` at `22/22` tests) and the
+  own-loaded wave (`20261004T232823091897Z-23133`, eight `pass` at `22/22`).
+  None of them verifies an edit made after its own stamp, and this lesson
+  claims no verification of any such edit.

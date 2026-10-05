@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+#
+# SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
+
+inputs:
+  # A revision, not `rolling`: a branch name is not a pin. The lock that
+  # resolves it belongs to whoever operates this package and is not written
+  # here; no hash is invented in this repository.
+  nixpkgs:
+    url: github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737
+
+# `devenv clean` removes devenv's own generated state - `.devenv`,
+# `.devenv.flake.nix`, `devenv.local.nix` - and nothing else. `.zig-cache/` and
+# `zig-out/` are build outputs and are not at risk: this file never asks for a
+# way to destroy a half-finished build.
+#
+# `clean` under this key is devenv's environment-sanitising option, and it
+# takes `enabled` and `keep`, not a sequence of paths. It is written in that
+# shape, stating in full what the default already is: the shell is entered
+# without sanitising the environment, and no variable is dropped from it.
+clean:
+  enabled: false
+  keep: []

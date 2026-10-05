@@ -1,383 +1,466 @@
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-blue.svg)](https://github.com/IUPAC-InChI/InChI/graphs/commit-activity)
-[![build](https://github.com/IUPAC-InChI/InChI/actions/workflows/ci.yml/badge.svg)](https://github.com/IUPAC-InChI/InChI/actions/workflows/ci.yml)
-[![GitHub contributors](https://img.shields.io/github/contributors/IUPAC-InChI/InChI.svg)](https://GitHub.com/IUPAC-InChI/InChI/graphs/contributors/)
-[![GitHub release](https://img.shields.io/github/release/IUPAC-InChI/InChI.svg)](https://github.com/IUPAC-InChI/InChI/releases/)
-[![Changelog](https://img.shields.io/badge/Changelog-2ea44f)](https://github.com/IUPAC-InChI/InChI/blob/dev/INCHI-1-DOC/CHANGELOG.md)
-[![Software Article - JChemInf](https://img.shields.io/badge/Software_Article-JChemInf-blue)](https://doi.org/10.1186/s13321-021-00517-z)
-[![Good reads](https://img.shields.io/badge/Goodreads-372213?style=flat&logo=goodreads&logoColor=white)](https://www.inchi-trust.org/inchi-overview-papers-presentations/?wpv_aux_current_post_id=4309&wpv_aux_parent_post_id=4309&wpv_view_count=4473)
-[![InChI - Web Demo](https://img.shields.io/badge/InChI-Web_Demo-2ea44f)](https://iupac-inchi.github.io/InChI-Web-Demo/)
-[![Coverity Scan Build Status](https://scan.coverity.com/projects/32621/badge.svg)](https://scan.coverity.com/projects/inchi)
+# inchi — the IUPAC chemical identifier, as a Zig package
 
-<img src="./INCHI-1-DOC/assets/inchi-wheel.png" width="300" height="300" />
+**InChI** is the structure-based chemical identifier developed by
+[IUPAC](https://iupac.org/) and the [InChI Trust](https://www.inchi-trust.org/).
+This repository packages it: it compiles **upstream's own C**, byte for byte,
+from the `INCHI-1-SRC` tree in this repository — all 60 translation units of the
+`libinchi` target including the six-unit IXA backend — and publishes a Zig 0.16
+package over the translated public API. It generates standard and non-standard
+identifiers, reads them back into structures, computes InChIKeys and their two
+SHA-256 extension hashes, and validates both.
 
-# InChI - The IUPAC International Chemical Identifier
+Nothing about the chemistry is reimplemented, no table is regenerated, and
+nothing is downloaded at build time.
 
-**InChI** is a structure-based chemical identifier, developed by [IUPAC](https://iupac.org/) and the [InChI Trust](https://www.inchi-trust.org/). It is a standard identifier for chemical databases that facilitates effective information management across chemistry.
+Upstream's own project README is shipped here unchanged, byte for byte, as
+[`README.upstream.md`](README.upstream.md). This file is the fork's document.
+Where the two differ, this one describes this package; upstream's describes the
+project it came from.
 
-**InChI** and **InChIKey** are open standards. They use unique machine readable strings to represent, store and search chemical structures. All the software and algorithms related to them are open source.
+* **Zig interface** — build, import, call, and the whole typed surface:
+  [`README.zig.md`](README.zig.md).
+* **Provenance, pin and integrity** — [`UPSTREAM.md`](UPSTREAM.md) and
+  [`UPSTREAM.sha256`](UPSTREAM.sha256).
+* **Licence** — [`NOTICE.md`](NOTICE.md) for the per-file inventory and
+  [`FORK-LICENSE.md`](FORK-LICENSE.md) for this fork's own grant.
+* **Dated history** — [`CHANGELOG.md`](CHANGELOG.md).
 
-## Contents of this document
+---
 
-Click on the icon in the upper right of this README to view the table of content.
+## 1. Current native-source deviations
+Two upstream C files are edited, each once, each for a stated reason, and each
+with the owner having authorised that specific edit.
+Upstream's digest for each is recorded as the baseline the patch is measured
+against in
+[`UPSTREAM.md`](UPSTREAM.md) § The two patched source files; the digest this
+package ships is the record line in `UPSTREAM.sha256`, quoted below.
 
-## What is InChI
+| File | What changed | Why | Upstream digest → shipped digest |
+|---|---|---|---|
+| `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c` | Nine inserted lines — a seven-line disclosure comment and two string-literal macros — plus three changed lines: the two banner arguments in `HelpCommandLineParms`, and one existing comment line whose format string held an accidental nested-comment delimiter. The compiler's `__DATE__`/`__TIME__` macros are replaced by the **pinned source tag** and a literal `"(no build timestamp)"` | Two builds of these same sources produced different help text, so the library's output was not reproducible across build dates. Separately, Zig's C backend rejects `__DATE__`/`__TIME__` in a ReleaseSafe-mode compile, and rejects the nested `/*` | `eb351611…` → `74302e26597450060b8341a569f4fd8a07813aadce1f05e9b3507c34980cdd3a` |
+| `INCHI-1-SRC/INCHI_BASE/src/ichicano.c` | `#include <sys/timeb.h>` moved below `#include "mode.h"` and wrapped in `#ifndef COMPILE_ANSI_ONLY` — **two inserted lines, no changed line**. The include moves; it is not rewritten | `mode.h` defines `COMPILE_ANSI_ONLY` for every non-Microsoft compiler and for `TARGET_API_LIB`, so a guard read *above* that header sees the macro still undefined and includes the header anyway. `<sys/timeb.h>` is absent on `aarch64-macos` and `x86_64-openbsd` | `5c031a2b…` → `9a0998a3a41f62508e755d9411bf3c78b2b7b1ae63edcea7a40c55307130d98b` |
 
-**InChI** is a structure-based textual identifier, strictly unique, non-proprietary, open source, and freely accessible.
+**What did not change, and is not negotiable.** No chemistry, no ABI, no
+allocator, no option, no timeout, no flag, no build mode, and no diagnostic
+suppression. The `ichicano.c` guard removes a header that nothing in that
+configuration uses — the only two readers of `struct _timeb` and `_ftime` in
+the file, `InchiTimeGet` and `bInchiTimeIsOver`, sit in the `#else` arm of the
+same file's own `#ifdef COMPILE_ANSI_ONLY` — and changes no compiled token in
+any other configuration.
 
-**InChI** identifiers describe chemical substances in terms of layers of information – the atoms and their bond connectivity, tautomeric information, isotope information, stereochemistry, and electronic charge.
+**No source is omitted.** All 60 upstream translation units are compiled: 48 in
+`INCHI-1-SRC/INCHI_BASE/src`, 6 in `INCHI-1-SRC/INCHI_API/libinchi/src`, and the
+six `ixa/*.c` units. The compile list is written out file by file in `build.zig`
+rather than globbed, so a new upstream unit cannot enter the archive without a
+decision.
 
-![inchi-structure](./INCHI-1-DOC/assets/inchi_example.jpg)
-![inchi-example](./INCHI-1-DOC/assets/inchi_example2.png)
+**The full public surface ships, not a facade-shaped subset of it.**
+`inchi_api.h` declares 36 exported public functions in three blocks — the
+`Get*`/`Free*`/`Check*` surface, the `INCHIGEN_*` and `STDINCHIGEN_*` generator
+handle families, and `MakeINCHIFromMolfileText` — plus one more,
+`FreeInChIExtInput`, declared without the decoration the rest carry and
+therefore not exported. Those 36 are exactly the 36 non-`IXA_` globals in
+`INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`, and `ixa.h` adds **91
+exported `IXA_` declarations**, matching that file's other 91: the version
+script exports 127 globals in all. `ixa.h` is 686 lines and 355 of them mention
+`IXA_`, across 199 distinct identifiers — so 355 is a line count, and never was
+a declaration count. `inchi_api.h:1413` ends with `#include "ixa.h"`, so one
+installed header reaches the whole IXA API, and the six IXA translation units
+that implement it are compiled. A C consumer including `<inchi_api.h>` and
+linking `libinchi` gets the complete classic **and** IXA closure. `pub const c`
+in the Zig facade is the complete translated declaration set, so anything the
+typed facade does not name stays reachable.
 
-With its fixed length of 27 characters the **InChIKey** — the hashed version of the **InChI** — allows for a compact representation and usage in databases or search engines.
+**Every other upstream source file, header, build file, licence text and
+document is unmodified.** The two files above and `.gitignore` are the only
+edits in the tree; §2 covers the third. The record is `UPSTREAM.sha256`, now
+**110 lines**; `README.upstream.md`, upstream's `LICENSE` and upstream's own
+`INCHI-1-SRC/INCHI_API/tbb/LICENSE` are among the files it pins.
 
-**InChI** is used by most of the large chemical databases and software applications handling many millions of chemical structures.
+## 2. Current native-build deviations
 
-**InChI** enables the linking and interlinking of chemistry and chemical structures on the web and computer platforms.  By enhancing the discoverability of chemical structures, **InChI** advances the [FAIR Guiding Principles for scientific data management and stewardship](https://doi.org/10.1038/sdata.2016.18). FAIR was published in 2016 to provide guidelines to improve the Findability, Accessibility, Interoperability, and Reuse of digital assets. **InChI** provides ‘Findability’ for chemical structures and extends Interoperability between platforms, both of which foster Accessibility and Reuse.
+Upstream's own `CMakeLists.txt`, `makefile`, `makefile32` and `vc14` projects are
+carried for provenance and are **not used**. This package has its own build
+graph, and every flag it passes is quoted from one of those upstream files
+rather than chosen here.
 
-## InChI Trust
+| Deviation | What it is | Where the value comes from |
+|---|---|---|
+| Build system | `build.zig` compiles upstream's C directly. No CMake, no autotools, no Make, no configure step, no generated header. Upstream's core generates no version header at all, so none is invented | — |
+| Dialect and flags | `-std=c11`, `-fno-strict-aliasing` | upstream's own `libinchi/src/CMakeLists.txt:6` and `libinchi/gcc/makefile:123` |
+| Macros | `TARGET_API_LIB=1`, `COMPILE_ANSI_ONLY=1`, on both the C compile line and the `addTranslateC` translation line | `libinchi/src/CMakeLists.txt:154-158` and `libinchi/gcc/makefile:129` |
+| Library name | `inchi` → `libinchi` | `PREFIX ""` at `libinchi/src/CMakeLists.txt:165` |
+| Linkage | `-Dlinkage=static` or `-Dlinkage=dynamic`. **The default is `static`**, which is what this package always built; nothing about the default changed | the two variants are one library, not two projects |
+| Shared-library export set | On ELF targets a shared build passes upstream's own version script `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` to the linker, so the exported set is the public API and not every internal InChI symbol. `-fPIC` is added on non-Windows targets | upstream's `libinchi/gcc/makefile:62-67` and the `.map` file itself |
+| Windows DLL macros | `BUILD_LINK_AS_DLL` and `_USRDLL` are defined on the C core **only** when the target ABI is `msvc`, because `inchi_api.h:691` gates the whole import/export block on `_WIN32 && _MSC_VER && BUILD_LINK_AS_DLL`. On MinGW neither is defined, which is upstream's own observable behaviour. The static build never carries them, on any target | `inchi_api.h:691-709` |
+| Installed closure | the library, `include/inchi_api.h` and `include/ixa.h`, `lib/pkgconfig/inchi.pc`, `bin/misuse`, and `share/doc/inchi/{LICENSE, NOTICE.md, FORK-LICENSE.md, UPSTREAM.md, README.md, README.upstream.md, tbb/LICENSE}`. **InChI itself installs no tools and no runtime data**, so there is still no upstream data tree and no other executable; the one program is fork-authored and is built in both configurations. The two READMEs keep distinct names in the installed tree, and the Intel TBB Apache-2.0 text sits in its own `tbb/` subdirectory so it is never read as part of the MIT set. The `.pc` uses `prefix=${pcfiledir}/../..`, so it is correct for any `--prefix`; it carries `Version: 1.07.5` — upstream's own `CURRENT_VER` string, not the manifest's `1.7.5` — `Cflags: -I${includedir} -DTARGET_API_LIB -DCOMPILE_ANSI_ONLY`, `Libs: -L${libdir} -linchi`, `Libs.private: -lm` only where libm is a separate library, and `-DBUILD_LINK_AS_DLL` appended to `Cflags` only for `msvc` with a shared build | `INCHI-1-SRC/INCHI_BASE/src/bcf_s.h:52` |
+| `-z relro` | **deliberately omitted.** Upstream passes it at `libinchi/src/CMakeLists.txt:169` and `libinchi/gcc/makefile:64`; it is a hardening workaround for the produced image and decides nothing about the exported set or about a consumer's compile line. Recorded as an omission on the record, not a silent one | `libinchi/src/CMakeLists.txt:169`, `libinchi/gcc/makefile:64` |
+| `.gitignore` | upstream's 31 rules are kept verbatim and first; the fork appends `.zig-cache/`, `zig-out/`, `consumer/.zig-cache/`, `consumer/zig-out/`, `result`, `result-*`, `.devenv/` and `.direnv/`. Nothing was removed to make room | — |
+| A shipped upstream file | `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` moved from "carried for provenance" into the package, because a shared build reads it and a build cannot read a file the package does not ship. It is upstream's, unmodified, and is the 110th line of `UPSTREAM.sha256` | — |
+| Portable packaging | `package.nix` is the one source-only derivation, consumed by both `flake.nix` and `devenv.nix`. `flake.nix` exposes `packages.<system>.static` and `packages.<system>.shared`, `default` being `static`. The `nixpkgs` input is pinned twice over: by revision in `flake.nix:15` and by the committed `flake.lock` beside it, which is the same rev `c7def046b9a883d46974757852106483d741586f` with its `narHash`. **There is no `devenv.lock`**, because `devenv.yaml` pins its own input by revision; none is invented to match the flake's. `devenv.nix` is the canonical development shell and carries **tools, not this SDK**, so entering the shell does not mean building the library. No sibling import, no host path, no build-time download, no claim of a wholly static executable | [`UPSTREAM.md`](UPSTREAM.md) § Portable packaging |
+| Runtime loading | `-Druntime=true`, default `false`. When true, `build.zig` replaces exactly one call in the bundled arm — `module.linkLibrary(artifact.?)` — with `runtime/graph.zig createModule(b, translate_c, target, optimize)`, and the facade's `c` import becomes the generated dispatch. The C artifact is built and installed either way: which dispatch a build *uses* is a different question from which artifact it *produces*. Four pieces: the reusable core `runtime/loader.zig`, this SDK's descriptor `runtime/library.zig`, the generated dispatch from `runtime/generate.zig`, and `runtime/sync.c` compiled with `-DRT_SYNC_PREFIX=inchi_rt` | `runtime/graph.zig` |
 
-The [InChI Trust](https://www.inchi-trust.org/) is a charity that supports the development and promotion of the InChI standard. It works in partnership with [IUPAC](https://iupac.org/) to update and release new extensions to and applications of InChI. The Trust is a membership organisation, governed by its Board of Trustees which includes representation from [IUPAC](https://iupac.org/).
+**What a runtime-loaded provider must be**, read out of `runtime/library.zig`
+rather than assumed:
 
-![InChI-Members](./INCHI-1-DOC/assets/inchi_members_03_2025.jpg)
+* **It exports** every `extern` the translated header declares — `translate.h`
+  over `inchi_api.h` and, through `inchi_api.h:1413`, `ixa.h`: the whole
+  `GetINCHI`/`GetStdINCHI`/`GetINCHIEx` surface, every `GetStructFrom*` rebuild,
+  every `Free*`, the AuxInfo conversion pair and its release pair, the key
+  surface, `CheckINCHI`, `MakeINCHIFromMolfileText`, the whole
+  `INCHIGEN_*`/`STDINCHIGEN_*` generator, and the IXA entry points. One
+  deliberate exception: `FreeInChIExtInput` (`inchi_api.h:678`) carries no
+  `EXPIMP_TEMPLATE INCHI_API` decoration, is absent from the **127** globals in
+  `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` — 36 classic and 91
+  `IXA_` — and that file's `local: *`
+  hides it from a shared ELF provider — so its declaration stays **direct**
+  rather than demanding a symbol a correct libinchi does not export. It is
+  defined at `INCHI-1-SRC/INCHI_API/libinchi/src/inchi_dll.c:2923` and called
+  from inside the library itself, so a static archive carries it; a shared ELF
+  provider built with that version script does not.
+* **It was built from the same `inchi_api.h` and `ixa.h` with the same
+  settings**: `MAXVAL` 20, `ATOM_EL_LEN` 6, `NUM_H_ISOTOPES` 3, `STR_ERR_LEN`
+  256, `MAX_NUM_STEREO_ATOM_NEIGH` 4, `MAX_NUM_STEREO_BONDS` 3, `INCHI_NUM` 2,
+  `FIND_RING_SYSTEMS` 1. Those fix the layouts of `inchi_Atom`,
+  `inchi_Stereo0D`, `InchiInpData`, `NORM_ATOM`, `NORM_ATOMS` and
+  `INCHIGEN_DATA`, and `inchi_Atom` is also what the facade's own `Atom` is.
+* **ABI family:** plain C calling convention, no variadics, no exported data.
+  `AT_NUM`/`NUM_HS` are `signed short`, `AT_NUMBR` `unsigned short`, `S_CHAR`
+  `signed char`, the `WarningFlags` cells `unsigned long`, every status `int`.
+  Nothing here is width-configurable.
+* **Allocator:** upstream's own, and no Zig allocator is ever in the path. Every
+  allocation a caller receives is released by a matching `Free*` in the same
+  provider — which is also why a Zig leak oracle cannot see one.
 
-The scientific design of the various tools and capabilities that comprise the InChI code are defined by the InChI Working Groups which are made up of volunteers from the InChI community with [IUPAC](https://iupac.org/) oversight. These voluntary groups are each focused on specific areas of chemistry or tools within the InChI code. See [Working Groups](https://www.inchi-trust.org/inchi-working-groups/) for details on each group and their membership.
+**What the load call looks like.** `LoadSource` is a two-arm union and the arm
+is always explicit — `.path` for an absolute file path, `.system` for a named
+library, passed to the platform loader unchanged. There is no path-to-system
+fallback. `load` returns one of `EmptySource`, `SourceTooLong`,
+`UnsupportedTarget`, `OpenFailed`, `MissingSymbol`, `ValidationFailed`,
+`ProviderMismatch`, `ReentrantLoad`. The same request is idempotent; a different
+request after a load has succeeded is refused rather than honoured; a failed
+candidate is closed and nothing is published; there is no automatic retry; and
+any ordinary module call made before the load panics in every optimization mode,
+naming the library and telling the caller to call `load` first.
 
-The development of the code is coordinated by the Technical Director of the InChI Trust, together with the working groups, [IUPAC](https://iupac.org/) and our development partners. Our development partners currently include [RWTH Aachen](https://www.rwth-aachen.de) (as part of [NFDI4Chem](https://www.nfdi4chem.de/), acknowledging funding from [Volkswagen Stiftung](https://www.volkswagenstiftung.de/de) and the [Data Literacy Alliance – DALIA](https://dalia.education/)), and the [Beilstein Institut](https://www.beilstein-institut.de/en/).
+**One combination is refused.** `-Druntime=true` together with `-fsys=inchi`
+**panics at configure time**, with a message saying why. System mode's contract
+is to bind to an installed `libinchi`; a configuration that resolves its
+symbols at run time does not bind to one. It is refused rather than resolved in
+favour of either side, because silently dropping one would build something the
+caller did not ask for under a name that says they did. `-Dlinkage` and
+`-Druntime` are otherwise orthogonal — which artifact, and which dispatch — and
+may be set together.
 
-![Dev-Partners](./INCHI-1-DOC/assets/development-partner-logos-2.jpg)
+**Two runtime steps.** `runtime-test` exists **only** under `-Druntime=true`; it
+is `addTest` plus `addRunArtifact` on `runtime/load_tests.zig`, needs both
+`INCHI_TEST_PROVIDER` and `INCHI_TEST_ALIEN`, and **skips nothing** when either
+is missing, so it cannot be run where both cannot be named. `misuse` is built
+and installed by `zig build` in **every** configuration, because which of its
+modes stop depends on the configuration and only the caller knows which one it
+built; its three modes are `misuse pre-load`, `misuse after-load <path>` and
+`misuse linked-load`. **No step runs `misuse` and asserts an exit status**,
+because two of the three are supposed to stop — `zig build` owes that it
+produces the program, and running the three commands is the caller's.
 
-## How to contribute
+**The cross gate is the static, linked closure, and it says so.** `check` and all
+53 cells of the published matrix are named on the command line without
+`-Dlinkage` or `-Druntime`, so they compile the static library and link it
+directly. `-Dlinkage=dynamic` has no answer for `wasm32-wasi`, because WASI has
+no shared object for a C library, so
+the matrix could not cover both linkages without dropping a cell. All 53 cells
+stay; the shared artifact is covered by `zig build -Dlinkage=dynamic` and by
+`zig build consumer -Dlinkage=dynamic`, both `PENDING-VERIFICATION` in §3. **The
+matrix row does not cover both linkages, and it does not cover the runtime route
+either.**
 
-Should you have any questions, comments, or suggestions, please feel free to post them here: [GitHub discussion page](https://github.com/IUPAC-InChI/InChI/discussions).
+**Upstream's CI is left exactly as it arrived** and is not retargeted at this
+fork's infrastructure. This repository's own workflow is
+`.github/workflows/verify.yml`.
 
-If you encounter a bug, we kindly request you to [create an issue](https://github.com/IUPAC-InChI/InChI/issues).
+### Dated history
 
-You are welcome to contribute to this project. To do so, you may [submit a pull request](https://github.com/IUPAC-InChI/InChI/pulls):
+The build graph has moved in waves, each with its own numbered entry and its own
+receipts. The current state is described above; what changed and when is in
+[`CHANGELOG.md`](CHANGELOG.md):
 
-![git-flow](./INCHI-1-DOC/assets/git_flow.svg)
+* **§1–§3** (the original package) — the Zig package, the decision to compile
+  the whole `libinchi` target including IXA, and the decision to build the
+  in-tree library by default with `-fsys=inchi` as the opt-in.
+* **§4 onward** — the Zig API corrections: sentinel types, option-string
+  handling, bounds, ownership and lifetimes.
+* **§33–§35** (2026-10-02 wave) — the 53-cell matrix over the shipped
+  arrangement, the disclosure-prose corrections, and the consumer step's
+  execute-or-build predicate.
+* **Zig API contract alignment — 2026-10-03** — output ownership, warning
+  dimensions, reachable construction enums, and the module fragment.
+* **§36** (this wave) — the shared/static delivery, `inchi.pc`, the full
+  installed closure, the ELF version script's promotion into the package, and
+  the portable Nix and devenv packaging.
+* **§37** (this wave) — runtime loading, documented from the landed source: the
+  explicit `LoadSource` arms, the provider's export and ABI requirements, and
+  the load-time check, with every runtime gate `PENDING-VERIFICATION`.
 
-## Source code documentation
+Each entry states what was observed when the claim was made and what is
+`PENDING-VERIFICATION`. No entry borrows another entry's receipt.
 
-We've started documenting the source code with [Doxygen](https://www.doxygen.nl/index.html).
+## 3. Current build, run and test matrix
 
-Follow the Doxygen syntax when writing comments. For example
+**Read the State column before the Result column.** Rows marked
+**history** are real runs with real receipts, but each was taken over a tree
+this package has since left — before the `ichicano.c` patch, before a document
+settled, or before this migration. Their numbers are **not** carried forward.
+Rows marked **`PENDING-VERIFICATION`** have had a correction land in them and no
+gate has observed them yet. The complete receipt table, including the packaging
+rounds and the `sha256sum -c` history, is in
+[`README.zig.md`](README.zig.md) § Verification status.
 
-```C
-/**
-* @brief Read a field from a MOL file.
-*
-* @param data Pointer to the destination buffer.
-* @param field_len Length of the field to read.
-* @param data_type Type of the data to read.
-* @param line_ptr Pointer to a variable that will receive the address of the next line.
-* @return for MOL_FMT_STRING_DATA: number of bytes excluding trailing zero
-*         for all others:  1=success; 0 = empty; -1= error
-*/
-int MolfileReadField(void *data,
-     int field_len,
-     int data_type,
-     char **line_ptr);
+**Every `16/16` below is what its own run printed, against the `tests.zig` of
+its day**, which declared sixteen top-level tests. The file as it ships
+declares **22** (`tests.zig:185, 213, 232, 259, 274, 302, 322, 340, 400, 428,
+446, 464, 488, 526, 556, 574, 599, 652, 672, 707, 753, 810`). The older rows
+stayed on a tree this package has since left, so their numbers are not carried
+forward. Three later receipts did execute the 22-test file, each against its own
+source stamp: the native final wave and the own-loaded wave, eight cells each at
+**22/22**, and the 53-target matrix below, whose 20 executed cells ran 22 tests
+each. Adding a test moves neither a compile result nor a build-only cell, so the
+six-target `check` baseline and every `build_only` cell stay current on their own.
+
+| Gate | Command | State | Result |
+|---|---|---|---|
+| test + smoke + install, Debug, native | `zig build test smoke install -Doptimize=Debug` | **history** | exit 0, `16/16 tests passed`, `install inchi success`. Taken before the `ichiparm.c` patch; it never compiled the `ichicano.c` guard |
+| test + smoke, ReleaseSafe, native | `zig build test smoke -Doptimize=ReleaseSafe` | **history** | exit 0, `16/16 tests passed`. Same tree as the row above |
+| consumer package | `cd consumer && zig build run` | **history** | exit 0, four published identifiers and keys, `consumer ok`. Same tree |
+| test + smoke + install, Debug, native — stable wave | `zig build test smoke install -Doptimize=Debug` | **history** | exit 0, `16/16 tests passed`, on the arrangement this package shipped before the current migration |
+| test + smoke, ReleaseSafe, native — stable wave | `zig build test smoke -Doptimize=ReleaseSafe` | **history** | exit 0, `16/16 tests passed`, same session |
+| consumer — stable wave | `cd consumer && zig build run` | **history** | exit 0 against the tree the two rows above installed |
+| `check -Dtarget=x86_64-linux-gnu` | `zig build check -Dtarget=x86_64-linux-gnu` | **history** | exit 0, `6/6 steps succeeded` |
+| `check -Dtarget=aarch64-linux-gnu` | as above | **history** | exit 0, `6/6 steps succeeded` |
+| `check -Dtarget=aarch64-macos-none` | as above | **history** | exit 0, `6/6 steps succeeded`. This target was red before the `ichicano.c` patch and is green on the arrangement the final baseline compiled |
+| `check -Dtarget=x86_64-windows-gnu` | as above | **history** | exit 0, `6/6 steps succeeded` |
+| `check -Dtarget=riscv64-linux-gnu` | as above | **history** | exit 0, `6/6 steps succeeded` |
+| `check -Dtarget=wasm32-wasi` | as above | **history** | exit 0, `6/6 steps succeeded` |
+| `cross-test`, full 53-platform matrix | `cross-test` at the package root, through `cross-test.profile.sh` | **history** | harness exit 0, `target_count: 53`, counts `pass 20`, `fail 0`, `build_only 33`, `partial 0`; 20 cells executed the suite at 16 tests each — that was the whole of `tests.zig` in that tree, which declared 16 tests then and declares **22** now — and no foreign BSD, macOS, Mac Catalyst, Windows or WASI binary was executed in any cell. Compile and test coverage, not a measurement of which targets can run. The 33 `build_only` cells and the six-target `check` baseline stay current regardless: adding a test does not move a compile result |
+| `cross-test`, current epoch | `cross-test --jobs 8 --build-jobs 8` | **current, source-bound** | Run `20261004T221720228710Z-45046`, receipt `inchi-53-target-8.json`, source stamp `bc5a479718…` identical before and after, exit 1. Corrected audit: **12 pass, 33 build-only, 0 build failures, 8 run failures** of 53, 20 cells executed. All eight failures are the same big-endian cell family — `aarch64_be-linux`, `armeb-linux`, `mips-linux`, `mips64-linux`, `powerpc-linux`, `powerpc64-linux`, `s390x-linux`, `thumbeb-linux` — and in each the suite reports 21 of 22 with one failure: `tests.test.the molfile route produces PubChem's published identifier and key` returns `error.MissingIdentifier` at `tests.zig:734` with `molfile: status rejected, message` and an empty message, reached under `qemu-mips` and its siblings. The remaining 14 tests pass in every one of them. That is one upstream molfile route under foreign big-endian emulation; this package changed no C byte, and the rows above are the record |
+| `zig build check`, six declared compile targets | `zig build check` | **current, source-bound** | Label `baseline-inchi-check`, baseline run `20261005T014547Z-797a73f2`, 2026-10-05: exit 0, `Build Summary: 31/31 steps succeeded`, no failing step, all six declared targets seen. Compile and link only |
+| Native final wave, both linkages × four modes | `zig build test smoke install -Druntime=false` | **current, source-bound** | `native-final-evidence/20261004T233628757747Z-69351`: eight cells, eight `exit 0`, each `30/30 steps succeeded` and `22/22 tests passed`. Native and linked only; nothing was opened through the platform loader |
+| Own-loaded wave, both linkages × four modes | the same steps under `-Druntime=true` | **current, source-bound** | `loaded-final-evidence/20261004T232823091897Z-23133`: eight cells, eight `pass`, each `31/31 steps succeeded` and `22/22 tests passed` |
+| `sha256sum -c UPSTREAM.sha256` | as in [`UPSTREAM.md`](UPSTREAM.md) § Integrity | **`PENDING-VERIFICATION`** | every existing receipt verified a **109-line** record. The record is now **110 lines** — the ELF version script was added — and no receipt covers it |
+| `zig build -Dlinkage=dynamic` | static is the default; shared is new | **current, source-bound** | the two eight-cell waves above each ran four `-Dlinkage=dynamic` cells, and every one exited 0 with `22/22 tests passed`, so a shared `libinchi` is built, installed and exercised through the typed facade in `Debug`, ReleaseSafe, ReleaseFast and ReleaseSmall. The two std spellings this row used to carry as unconfirmed — `Step.Compile.setVersionScript` and `Build.installFile` — are settled by those sixteen configurations |
+| installed shared closure and `inchi.pc`, and a C consumer against it | — | **partly current** | the two waves installed the shared closure and its generated `inchi.pc` sixteen times, so the file and the soname links exist as written. **No C consumer has linked against them**, and that half of the row is still withheld |
+| installed static closure and an installed C/IXA consumer | `zig cc … libinchi.a …` | **history** | exit 0, `installed InChI ethanol/key and IXA water agree with PubChem`, against the pre-`ichicano.c` installed copy |
+| `nix build .#static` and `nix build .#shared` | — | **`PENDING-VERIFICATION`** | no `nix` evaluation or build of `package.nix` or `flake.nix` has been run. The `nixpkgs` input is pinned by revision in `flake.nix:15` and by the committed `flake.lock` beside it, so the row is unrun rather than unpinned |
+| `devenv shell` | — | **`PENDING-VERIFICATION`** | no `devenv` evaluation or shell has been entered |
+| `zig build -Druntime=true`, all four modes and both linkages | `zig build test smoke install -Druntime=true` | **current, source-bound** | the own-loaded wave above: eight cells, eight `pass`, each `31/31 steps succeeded` and `22/22 tests passed` |
+| runtime-loaded own provider | load by explicit `.path`, then call | **current, source-bound** | every cell of that wave loaded a provider of kind `own`: the `libinchi.so.1.7.5` this tree's own native wave installed, named by absolute path through `INCHI_TEST_PROVIDER` and by no other route, with nothing read from the ambient environment and no fallback |
+| runtime-loaded compatible external provider | load a libinchi built outside this package | **`PENDING-VERIFICATION`** | every provider in that wave was of kind `own`, so no external libinchi has been loaded here |
+| loader behaviour — startup, failure, explicit retry, idempotence, provider change, atomic publication | — | **`PENDING-VERIFICATION`** | none exercised here |
+| pre-load panic in ReleaseFast and ReleaseSmall | an ordinary module call before `load` | **`PENDING-VERIFICATION`** | the loader's pre-load call panics in every optimization mode by construction; no run here observes it |
+| `runtime-test` | `zig build runtime-test -Druntime=true`, with `INCHI_TEST_PROVIDER` and `INCHI_TEST_ALIEN` set | **`PENDING-VERIFICATION`** | the step exists only under `-Druntime=true`, and it skips nothing when either variable is missing, so it cannot be run where both cannot be named. Not in CI: `INCHI_TEST_ALIEN` must be a loadable object that is not `libinchi`, and inventing one would be fabricating a fixture this repository does not have |
+| `misuse`, all three modes | `misuse pre-load`, `misuse after-load <path>`, `misuse linked-load` | **`PENDING-VERIFICATION`** | built and installed by `zig build` in every configuration, because which modes stop depends on the configuration. **No step runs it and asserts an exit status**, and none is claimed here: two of the three are supposed to stop, and which two depends on how it was built. `zig build` owes that it produces the program; running the commands is the caller's |
+| `zig build consumer -Druntime=true -- --provider <path>` | — | **`PENDING-VERIFICATION`** | both source-level hops now forward: the SDK helper appends `--` and its `b.args`, then `consumer/build.zig` passes its `b.args` to the program. Before the outer-hop correction the SDK route silently dropped the provider path. No actual provider load or consumer run is established by this wiring |
+
+Every row marked **current, source-bound** holds one source stamp for its whole
+run, and the stamps differ between rows. A build-graph, header, helper or
+normalisation edit made after a stamp describes a tree that row never saw, and
+no row above verifies one. A `build_only` cell compiled and had no runner: it is
+coverage and not a passing test.
+
+`cross-test` needs the harness on `PATH`; the profile at the package root fixes
+the build step to `test` and deliberately names no target, no runner and no
+host path, so the whole published matrix stays whole and a cell with no detected
+runner is reported as build-only.
+
+## 4. Consumption
+
+### From Zig
+
+In your `build.zig.zon`:
+
+```zig
+.dependencies = .{
+    .inchi = .{ .path = "../inchi" },
+},
 ```
 
-Please write your comments in the header files where possible.
-The Doxygen documentation syntax is quite powerful: you can include formulas, tables, and diagrams.
-For details see <https://www.doxygen.nl/manual>.
+then
 
-The documentation is [built on every push](.github/workflows/deploy_docs.yml) to the default branch of this repository and hosted at <https://iupac-inchi.github.io/InChI/>.
-That is, your comments will automatically be rendered to HTML and served as online documentation.
-
-## Contents of this repository
-
-### INCHI-1-DOC
-
-The [INCHI-1-DOC](https://github.com/IUPAC-InChI/InChI/tree/main/INCHI-1-DOC) subfolder contains documentation related to the InChI Software.
-
-### INCHI-1-SRC
-
-The [INCHI-1-SRC](https://github.com/IUPAC-InChI/InChI/tree/main/INCHI-1-SRC) subfolder contains the InChI source code. It also contains examples of InChI API usage, for C
-(`inchi_main`, `mol2inchi`, `test_ixa`), as well as the InChI API library source code and
-related projects/makefiles.
-
-### INCHI-1-TEST
-
-The [INCHI-1-TEST](https://github.com/IUPAC-InChI/InChI/tree/main/INCHI-1-TEST) subfolder contains the test scripts and resources.
-
-## Using compiled binaries/libraries
-
-You can download compiled artifacts from <https://github.com/IUPAC-InChI/InChI/releases/latest>.
-The archive `release_artifacts.zip` contains 64-bit artifacts for Windows, Linux, and macOS.
-The artifact archive of each of those three platforms includes the following:
-
-- InChI executable `inchi-1`
-- InChI library `libinchi` with corresponding `inchi_main` program
-
-We're compiling these artifacts with GitHub Actions.
-If you're interested in details about the platforms and compilers, have a look at the following [configuration](.github/workflows/release.yml),
-as well as the files in the `cmake_configurations.zip` archive, which is included for each platform.
-
-## Building from source
-
-Users can build any [InChI subproject](#contents-of-this-repository) (e.g. `InChI CLI/inchi-1`, `libinchi`, etc.) from source using:
-
-- [CMake build system](#cmake-build-system) (Microsoft Windows, Apple macOS, Linux, FreeBSD, OpenBSD, Solaris, AIX)
-- [Microsoft Visual Studio projects](#microsoft-visual-studio-projects) (Microsoft Windows)
-- [Make build system](#make-build-system) (Microsoft Windows, Unix, Apple macOS)
-
-### CMake build system
-
-To build `InChI` sub-projects from source using `CMake` build system, make sure that [CMake](https://cmake.org/download/) is installed on your system. Users can choose between running interactive _CMake build tool_ script and running `CMake` in _Command Line Interface (CLI)_.
-
-#### Interactive CMake build tool
-
-The easiest way to build any (or all) `InChI` sub-project(s) using `CMake` is to run the _CMake build tool_ (`cmake_build_tool.bat` for Microsoft Windows platforms or `cmake_build_tool.sh` for Linux/Apple macOS platforms) which is located in the `INCHI-1-SRC` directory.
-
-- __Microsoft Windows__
-  - Double click on batch file `cmake_build_tool.bat`.
-  - Run `cmake_build_tool.bat` command in `Command Prompt`.
-  - Run `./cmake_build_tool.bat` command in `PowerShell`.
-
-- __Linux/Apple macOS__
-  - Run `./inchi_build_tool.sh` within `INCHI-1-SRC` directory.
-
-_CMake build tool_ users are only required to enter a number that corresponds to one or all `InChI` sub-projects which should be built from source using `CMake`.
-
-<p><figure>
-	<img src="INCHI-1-DOC/assets/cmake_tool1.jpg" alt="cmake_start_menu" />
-	<figcaption style="font-size:smaller;"><em>Figure cmbt01</em>. <em>CMake build tool</em>: start menu</figcaption>
-</figure></p>
-
-<p><figure>
-	<img src="INCHI-1-DOC/assets/cmake_tool2.jpg" alt="cmake_build_success" />
-	<figcaption style="font-size:smaller;"><em>Figure cmbt02</em>. <em>CMake build tool</em>: build success</figcaption>
-</figure></p>
-
-Please note that the main build directory `CMake_build` is positioned one level up relative to the directory `INCHI-1-SRC`.
-
-#### Using CMake with command line interface (CLI)
-
-Command line interface is recommended for gaining more control over the `CMake` build process.
-Please note that in `CMake` terminology a directory in which all project binaries/libraries are built is called _build directory_, whilst a directory in which project's `CMakeLists.txt` script is contained is called _source directory_.
-
-Each `InChI` sub-project has a dedicated `CMakeLists.txt` file in its corresponding _source directory_:
-
-<a id="cmake_sdl"></a>
-<table>
-  <thead colspan="2">
-	<td><strong><code>InChI</code>subproject</strong></td>
-	<td><strong>Source directory containing <code>CMakeLists.txt</code> script</td>
-  </thead>
-  <tr colspan="2">
-	<td><code>InChI CLI (inchi-1)</code></td>
-	<td><code>INCHI-1-SRC/INCHI_EXE/inchi-1/src</code></td>
-  </tr>
-  <tr colspan="2">
-	<td><code>libinchi</code></td>
-	<td><code>INCHI-1-SRC/INCHI_API/libinchi/src</code></td>
-  </tr>
-  <tr colspan="2">
-	<td><code>InChI API (inchi_main)</code></td>
-	<td><code>INCHI-1-SRC/INCHI_API/demos/inchi_main/src</code></td>
-  </tr>
-  <tr colspan="2">
-	<td><code>Mol2InChI</code></td>
-	<td><code>INCHI-1-SRC/INCHI_API/demos/mol2inchi/src</code></td>
-  </tr>
-  <tr colspan="2">
-	<td><code>Test IXA (test_ixa)</code></td>
-	<td><code>INCHI-1-SRC/INCHI_API/demos/test_ixa/src</code></td>
-  </tr>
-</table>
-<p style="font-size:smaller;"><em>Table sdl01</em>. <code>CMake</code> source directories for all <code>InChI</code> sub-projects.</p>
-
-Building any `C++/C` project with `CMake` consists of two parts:
-  - _Configuration_ process
-  - _Build_ process based on files created in _configuration_ process
-
-__`CMake` configuration process__ is usually started in two ways:
-  - By running the following set of commands:
-	```
-	mkdir <build_directory>
-	cd <build_directory>
-	cmake <source_directory>
-	```
-  - By running the following command:
-	```
-	cmake -B <build_directory> -S <source_directory>
-	```
-	- _Please note_ that it is _highly recommended_ to specify `<source_directory>` if this command is used, as `CMake` executable might report an error if project's `CMakeLists.txt` has not been found; for example:
-	   - `cmake -B <build_directory>` will work if the current directory is the `<source_directory>`, i.e. contains `CMakeLists.txt`
-	   - `cmake -S <source_directory>` will build all the binaries/libraries in the current directory
-	 - If `<build_directory>` does not exist, it will be created by `CMake` (on condition that `CMakeLists.txt` has been found)
-
-In case of building a `InChI` sub-project, the name of `<build_directory>` can be arbitrary, whereas `<source_directory>` must be selected from [Table sdl01](#cmake_sdl).
-
-Some important notes regarding `CMake` configuration:
-
-- `CMake` automatically detects a default `C++/C` compiler or a compiler [specified in `CMakeLists.txt`](https://cmake.org/cmake/help/book/mastering-cmake/chapter/Cross%20Compiling%20With%20CMake.html). Compiler can be explicitly specified using [additional options](https://cmake.org/cmake/help/latest/variable/CMAKE_LANG_COMPILER.html) provided by `CMake` executable, e.g. `-DCMAKE_C_COMPILER=<name_of_C_compiler>` and/or `-DCMAKE_CXX_COMPILER=<name_of_C++_compiler>`; these additional options can be combined (please refer to section __Examples of building `InChI` sub-projects using `CMake` with CLI__  below).
-- In case where multiple types of `C++/C` build systems are present, a specific build system can be selected using [`CMake` generators](https://cmake.org/cmake/help/latest/manual/cmake-generators.7.html), which enable `CMake` to write the input files for a specified native build system. `CMake` generators can be specified with the `CMake` executable option:
-  `-G <name_of_cmake_generator>`.
-- If single configuration generators are used (e.g. `Makefile Generators`, `Ninja`, etc.), the [build configuration](https://cmake.org/cmake/help/latest/manual/cmake-buildsystem.7) should be specified at _configure time_ using `CMAKE_BUILD_TYPE` variable, i.e. `-DCMAKE_BUILD_TYPE=<build_type>` configuration option. `CMAKE_BUILD_TYPE` variable can have [four different values](https://cmake.org/cmake/help/latest/manual/cmake-buildsystem.7.html#default-and-custom-configurations):
-  - `Debug`
-  - `Release`
-  - `RelWithDebInfo`
-  - `MinSizeRel`.
-- Conversely, build configuration for multi-configuration generators (e.g. `Visual Studio`, `XCode`, `Ninja Multi-Config`, etc.) is selected at _build time_ (please refer to section __`CMake` build process__ below).
-
-__`CMake` build process__ can start after configuration has been completed successfully by running the following command:
-```
-cmake --build <build_directory>
+```zig
+const inchi = b.dependency("inchi", .{ .target = target, .optimize = optimize });
+exe.root_module.addImport("inchi", inchi.module("inchi"));
 ```
 
-- Build configuration for multi-configuration generators (e.g. `Microsoft Visual Studio`, `XCode`, `Ninja Multi-Config`, etc.) can be set at _build time_ using the [`CMAKE_CONFIGURATION_TYPES` variable](https://cmake.org/cmake/help/latest/variable/CMAKE_CONFIGURATION_TYPES.html). `CMAKE_CONFIGURATION_TYPES` variable should contain a subset of the four build type values (`Debug`, `Release`, `RelWithDebInfo` and `MinSizeRel`).
-- `CMAKE_CONFIGURATION_TYPES` can be overridden by the project or a user; a typical example is `--config <build_type>` option for `Microsoft Visual Studio` generator.
-- If `Microsoft Visual Studio` generator is used, a _target_ project can optionally be specified at _build time_ using `--target <target_project>` option.
-- As with `CMake` configuration options, `CMake` build options can also be combined (please refer to section __Examples of building `InChI` sub-projects using `CMake` with CLI__ below).
+```zig
+const inchi = @import("inchi");
 
-_Please note_ that `CMake` configuration files and all build artefacts (binaries/libraries) are placed in `<build_directory>`.
+// One oxygen with two implicit hydrogens, which is water: PubChem CID 962.
+var atoms = [_]inchi.Atom{try inchi.atom("O", .{ .ordinary = 2 })};
+var output = try inchi.fromMolecule.standard(.{ .atoms = &atoms });
+defer output.deinit();
 
-##### Examples of building `InChI` sub-projects using `CMake` with CLI
-
-- Building _main_ `InChI API` sub-project using default options for configuration and build:
-
-```shell
-# current folder is one level above INCHI-1-SRC root
-# 'cmake_build' can be replaced with any directory name
-cmake -B cmake_build -S INCHI-1-SRC/INCHI_API/demos/inchi_main/src
-cmake --build cmake_build
+const identifier = output.identifier() orelse return error.NoIdentifier;
+std.debug.print("{s}\n", .{identifier});
 ```
 
-- Building `InChI CLI` (`inchi-1`) sub-project using `Microsoft Visual Studio` generator for _64-bit_ platorms, targeting `ALL_BUILD` project with `Release` build configuration:
+The complete typed surface — options, sentinels, lifetimes, ownership, bounds,
+the escape hatch through `pub const c`, and the raw IXA and `INCHIGEN_*` routes
+— is [`README.zig.md`](README.zig.md).
 
-```shell
-# current folder is INCHI-1-SRC root
-# 'cmake_bin/vs2022' can be replaced with any directory name
-mkdir ../cmake_bin/vs2022 # cmake_bin directory will be located outside INCHI-1-SRC
-cd ../cmake_bin/vs2022
-cmake -G "Visual Studio 17 2022" -A x64 ../../INCHI-1-SRC/INCHI_EXE/inchi-1/src
-cmake --build cmake_bin/vs2022 --target ALL_BUILD --config Release  # option '--target ALL_BUILD' can be omitted (default)
+### Runtime loading, from Zig
+
+Build with `-Druntime=true`. The module then exposes the same typed surface,
+backed by a dispatch that resolves symbols at run time instead of linking them:
+
+```zig
+const inchi = @import("inchi");
+
+try inchi.load(.{ .path = "/usr/local/lib/libinchi.so" });
+// or, by name, with no fallback to the other arm:
+try inchi.load(.{ .system = "libinchi.so.1" });
 ```
 
-- Building `InChI CLI` (`inchi-1`) sub-project using (single configuration) `Ninja` generator, with `Release` build configuration and `Clang` compiler:
+After a successful load the calls are ordinary module calls and look exactly
+like the linked ones. Before one, an ordinary call panics — in every
+optimization mode — naming the library and telling you to call `load` first.
+The provider is chosen once per process: the same request twice is idempotent,
+a different request afterwards returns `ProviderMismatch`, and a failed attempt
+closes its candidate and publishes nothing, so a retry is explicit.
 
-```shell
-# current folder is one level above INCHI-1-SRC root
-mkdir cmake_build
-cd cmake_build # 'cmake_build' can be replaced with any directory name
-cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ ../INCHI-1-SRC/INCHI_EXE/inchi-1/src
-cmake --build .
+### From C
+
+The installed headers reach the whole API surface, classic and IXA, from one
+include, because `inchi_api.h` includes `ixa.h`:
+
+```c
+#include <inchi_api.h>   /* also declares every IXA_* entry point */
 ```
 
-### Microsoft Visual Studio projects
+```sh
+cc my_tool.c $(pkg-config --cflags --libs inchi)
+```
 
-On Microsoft Windows, solution/project files for `Microsoft Visual C++ (MSVC)/Clang/LLVM` and `Intel oneAPI DPC++/C++ Compiler` are provided for all `InChI` sub-projects. The solution/project files are located in the following directories:
+If you would rather not use pkg-config, the library is `libinchi` and it links
+`-lm` wherever libm is a separate library. Upstream itself links `-linchi` by
+name and ships no `.pc` file; the one this package installs is this fork's.
 
-- `INCHI-1-SRC/INCHI_EXE/inchi-1/vc14` (command line/CLI/`inchi-1` version)
-- `INCHI-1-SRC/INCHI_API/libinchi/vc14` (API version consisting only of `libinchi.dll`)
-- `INCHI-1-SRC/INCHI_API/demos/inchi_main/vc14` (API version consisting of `libinchi.dll` and its corresponding executable `inchi_main.exe`)
-- `INCHI-1-SRC/INCHI_API/demos/mol2inchi/vc14` (API version consisting of `libinchi.dll` and its corresponding executable `mol2inchi.exe`)
-- `INCHI-1-SRC/INCHI_API/demos/test_ixa/vc14` (API version consisting of `libinchi.dll` and its corresponding executable `test_ixa.exe`)
+### From Nix
 
-### Make build system
+```sh
+nix build .#static     # the default
+nix build .#shared
+```
 
-On UNIX-based OSs/Apple macOS/Microsoft Windows, `InChI` sub-projects can be compiled from the source using [Make](https://en.wikipedia.org/wiki/Make_(software)) software if `GCC` and `Clang/LLVM` compilers are installed. `makefile/makefile32` files are provided in the following directories:
-- `INCHI-1-SRC/INCHI_EXE/inchi-1/gcc` (command line/CLI/`inchi-1` version)
-- `INCHI-1-SRC/INCHI_API/libinchi/gcc` (API version consisting only of `libinchi.dll/libinchi.so/libinchi.dylib`)
-- `INCHI-1-SRC/INCHI_API/demos/inchi_main/gcc` (API version consisting of `libinchi.dll/libinchi.so/libinchi.dylib` and its corresponding executable/ELF `inchi_main.exe/inchi_main`)
-- `INCHI-1-SRC/INCHI_API/demos/mol2inchi/gcc` (API version consisting of `libinchi.dll/libinchi.so/libinchi.dylib` and its corresponding executable/ELF `mol2inchi.exe/mol2inchi`)
-- `INCHI-1-SRC/INCHI_API/demos/test_ixa/gcc` (API version consisting of `libinchi.dll/libinchi.so/libinchi.dylib` and its corresponding executable/ELF `test_ixa.exe/test_ixa`)
+Each output carries the library, both public headers, `lib/pkgconfig/inchi.pc`,
+and the full licence material under `share/doc/inchi/` — including the per-file
+inventory, this fork's own grant, and upstream's Apache-2.0 text for the Intel
+TBB header that travels uncompiled inside the source tree.
 
+### Development
 
-<a id="MAKEFILE"></a>New features in `makefile/makefile32`:
+```sh
+devenv shell            # or: direnv allow
+```
 
-- `makefile/makefile32` files are configured to detect OSs automatically, so it is no longer needed to specify OS explicitly or run batch/bash script(s) before compiling.
-- `GCC` and `Clang/LLVM` compilers are also automatically detected by `makefile/makefile32` files with:
-  - `GCC` set as a default compiler on _64-bit_ platforms.
-  - `Clang/LLVM` set as a default compiler on _32-bit_ platforms (please refer to [these notes](#libgcc_32) for more details).
-- If both `GCC` and `Clang/LLVM` compilers are installed, setting a default compiler can be done simply by changing the `CCN` parameter in `makefile/makefile32` where:
-  - `CCN = 1` corresponds to `GCC`.
-  - `CCN = 2` corresponds to `Clang/LLVM`.
+The shell carries the toolchain and nothing else; the SDK is not in its
+`packages`. Inside it, `zig build` builds from this repository's sources
+exactly as it does outside one, and the packaged derivations are built on
+demand:
 
-Support for native/default Apple macOS `Clang` compiler is now provided with _64-bit_ versions of `makefile` files (thanks to [John Mayfield](https://github.com/johnmay/) for his assistance with this matter).
+```sh
+devenv build outputs.static
+devenv build outputs.shared
+```
 
-If `makefile/makefile32` is used for compiling `libinchi` on Microsoft Windows, `libinchi.dll` is now generated instead of `libinchi.so`. Also. please make sure to read [the notes](#libgcc_32) regarding the required `libgcc_s_dw2-1.dll` for running _32-bit_ executables on Microsoft Windows operating system in certain environments.
+Every script above begins by naming this repository's own directory and
+changing into it. That directory comes from `./.` in `devenv.nix` — the
+directory of the file that writes it — through `builtins.toString` and
+`lib.escapeShellArg`, and not from `$DEVENV_ROOT`, which `devenv --from
+path:<this SDK>` points at the project directory beside this tree. devenv runs
+a script as a generated program that inherits the caller's working directory,
+so a body that trusted either one looked for `build.zig` in a directory that
+has none. Every script that invokes `zig build` carries a fixed `-j8` and
+`--summary all` with an explicit `--cache-dir`, so the job count is this file's
+own rather than the host's and no cache is left to a default.
 
-#### Additional notes
+That cache directory is `$ZIG_LOCAL_CACHE_DIR/inchi`. A caller that exported
+`ZIG_LOCAL_CACHE_DIR` or `ZIG_GLOBAL_CACHE_DIR` keeps both, exactly as
+exported; a body fills only what is missing, and the root it fills from is
+`$XDG_CACHE_HOME`, else `$TMPDIR`, else nothing — with none of the four set the
+body names what is missing and exits non-zero *before* the compiler starts,
+which is why the fill is in the bodies rather than in `enterShell`:
+`devenv tasks run --mode single <name>` reaches a body without the shell hooks.
+Nothing in this file ever falls back to this checkout's own `.zig-cache`.
 
-[Intel oneAPI DPC++/C++](https://www.intel.com/content/www/us/en/developer/tools/oneapi/dpc-compiler.html) compiler support has been provided since `InChI v.1.07.2`. Please note that the support will _not_ be provided for [Intel C++ Compiler Classic (icc)](https://www.intel.com/content/www/us/en/developer/articles/release-notes/oneapi-c-compiler-release-notes.html) as it has been discontinued since `oneAPI 2024.0 release`.
+`sdk:build` and `sdk:build-shared` install something, so they pass `--prefix`
+themselves: `zig build install`'s own default is `zig-out` beside the build
+root, and the build root here is this checkout. The prefix is `$INCHI_PREFIX`
+if the caller exported one, else `$ZIG_LOCAL_CACHE_DIR/inchi/zig-out` — and the
+cache rule above has already filled and exported that variable, or stopped the
+body, so there is no second resolution order here and no `zig-out` fallback.
+`INCHI_PREFIX` is the one prefix variable this shell has, as before.
+`sdk:test` and `sdk:check` install nothing —
+`build.zig:671` hangs the smoke program's compile step under the install step
+and never the reverse (`build.zig:662`, `build.zig:675`) — so they name no
+prefix. `sdk:package-static` and `sdk:package-shared` are Nix builds, where the
+job count is the caller's `--max-jobs`/`--cores` and not a `-j8` on a
+`zig build`.
 
-### Known issues
+None of that has been run: no `devenv`, `zig` or Nix command was executed to
+produce this section, and the `devenv shell` row above stays
+`PENDING-VERIFICATION`.
 
-If _main_ API sub-project (i.e. `libinchi.so` and `inchi_main` ELF file) is built using `Make` software and `Clang/LLVM` compiler on Linux OS, and `libinchi.so` cannot be found by `inchi_main`, `LD_LIBRARY_PATH` should be set either temporarily or permanently before `inchi_main` ELF file is used.
-It might be worth trying to change the value of `LINKER_CWD_PATH` to `-Wl,-R,"",-rpath,$(LIB_DIR)` (i.e. replacing `=` with `,`) in corresponding `makefile/makefile32`; however, please note that during our tests, this option failed to generate `libinchi.so` with `Clang/LLVM` on Linux.
-More reliably, `LD_LIBRARY_PATH` can be set in several ways:
+### System mode
 
-- __Temporarily__
-  - Run `ldlp_fix.sh` script (located in `/INCHI_API/bin/linux`) with either of the following CLI commands:
-	- `./ldlp_fix.sh`
-	- `source ldlp_fix.sh`.
-  - Please note tha the path to `libinchi.so` can be edited in `ldlp_fix.sh`.
-	Alternatively, run `export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/path/to/libinchi.so`.
+`zig build -fsys=inchi` links an installed `libinchi` instead of compiling this
+repository's copy, translating the header that is actually installed next to the
+library rather than the in-tree one — an in-tree header would be found first and
+would silently bind this repository's 1.07.5 declarations to whatever library
+happens to be installed. **No run of `-fsys=inchi` has happened in this
+workspace**, so no result is claimed for it, and it is not part of the matrix
+above. The bundled build is the default, and a system result may never stand in
+for a source-package result.
 
-- __Permanently__
-  - Add the following line in `~/.bashrc`:
-	- `LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/path/to/libinchi.so"`.
-  - Alternatively, add the `libinchi.so` path to `ld.so.conf`, which means adding a file `/etc/ld.so.conf.d/local.conf` containing `<path/to/>libinchi.so` and then running `sudo ldconfig`.
-  - Another alternative is to use the open-source utility [patchelf](https://github.com/NixOS/patchelf).
+Three questions this mode resolves, and where each answer comes from
+(`SOURCE-CONFIRMED` from `build.zig`, not from a run):
 
-If a similar issue occurs on Apple macOS, one of the above solutions should be applied for setting `DYLD_LIBRARY_PATH` and/or `DYLD_FALLBACK_LIBRARY_PATH` (which behave like `LD_LIBRARY_PATH`).
+* **Which installed library.** An omitted `-Dlinkage` means the distribution's
+  shared object, so `system_linkage` defaults to `.dynamic`; an explicit
+  `-Dlinkage` names which installed flavour `-l` is asking for
+  (`build.zig:514-521`). It is a separate field from `linkage`, because in this
+  mode the graph builds no artifact at all and `linkage` then describes nothing.
+* **Which metadata.** Both the translation step and the published module ask
+  pkg-config for the installed tree's own `inchi.pc` with the same options —
+  `.use_pkg_config = .yes` and that `preferred_link_mode`
+  (`build.zig:963-967`, `:1052-1055`) — so the header the declarations came from
+  and the `-linchi` they bind to are one answer. `.yes`, not `.force`, is the
+  deliberate choice here: the fallback is the bare `-linchi` the file itself
+  publishes, and this mode is meant to degrade to a name rather than stop.
+* **Which executor.** The nested `consumer` build inherits the executor switches
+  this build resolved — `-fdarling`, `-fqemu`, `-frosetta`, `-fwasmtime`,
+  `-fwine` — and `--libc-runtimes` (`build.zig:1473-1483`), so it runs under the
+  same executor `hostCanExecute` decided with instead of resolving its own. The
+  `-fsys=inchi` or `-fno-sys=inchi` spelling is forwarded verbatim for the same
+  reason (`build.zig:1465-1471`).
 
-##### Important note about pre-C99 C language standard support
-Pre-`C99` `C` language standard support will be gradually phased out starting with `InChI` version `1.07.5`.
-Please make sure that the following versions of `C` compilers are installed:
-- `GCC 4.5` or later
-- `LLVM/Clang 8.0` or later
-- `Microsoft Visual C++ 12.0/Microsoft Visual Studio 2013` or later
+## Licence
 
-### Optional features
+Not a single-licensed package.
 
-#### Bounds checking functions
+* The InChI core is **MIT**, but not bare MIT: upstream's own bytes add an
+  attribution-notice obligation and a version banner that identifies the
+  software.
+* `sha2.c`/`sha2.h` carry MIT **with a coupling condition** — valid only in
+  combination with the InChI software package.
+* `stb_sprintf.h` is MIT **or** the Unlicense, dual-licensed inside the file.
+* `tbb/tbbmalloc_proxy.h` is **Apache-2.0**, Intel's, carried and never
+  compiled, with upstream's own full Apache text beside it.
+* This fork's own files are under **`LicenseRef-InChI-MIT-Conditional`**.
 
-To further improve code security, [bounds checking functions](https://wiki.sei.cmu.edu/confluence/display/c/Scope) (see Annex K of [C11 standard](https://en.cppreference.com/w/c/11)) can be optionally used starting from `InChI`  version `v.1.07.0`. Since a number of C compilers (e.g. `GNU GCC`) do not support bounds checking functions, they can be installed using some of the third-party open-source libraries such as:
+[`NOTICE.md`](NOTICE.md) is the per-file inventory and
+[`FORK-LICENSE.md`](FORK-LICENSE.md) is the grant. No personal or corporate
+copyright identity is asserted for this fork, because none was supplied.
 
-- [safec libc extension with all C11 Annex K functions](https://github.com/rurban/safeclib) -- actively maintained
-- [Safe C lib](https://sourceforge.net/projects/safeclib/)
-- [Implementation of C11 Annex K "Bounds-checking interfaces" ISO/IEC 9899:2011](https://github.com/sbaresearch/slibc)
+## Publication
 
-The use of bounds checking functions in `InChI` can be enabled/disabled in `bcf_s.h`.
-
-#### Intel oneAPI Threading Building Blocks (oneTBB)
-
-If you wish to use [Intel oneAPI Threading Building Blocks (oneTBB)](https://github.com/oneapi-src/oneTBB), please follow the instructions given in header files `mode.h` and `tbbmalloc_proxy.h`. Please note that the [compiled binaries](#using-compiled-binaries) _do not_ use `oneTBB`.
-
-## Experimental features under development
-
-Some of the experimental/engineering/hidden options featured in `InChI 1.07` which are known to be not fully functional are:
-
-### Command line
-
-_32-bit_ `Microsoft Visual Studio C++ (MSVC) Win32` and `Microsoft LLVM/Clang` compiler-specific issues with the following options:
-
-- `AMI`         Allow multiple input files (wildcards supported)
-- `AMIOutStd`   Write output to stdout (in AMI mode)
-- `AMILogStd`   Write log to stderr (in AMI mode)
-- `AMIPrbNone`  Suppress creation of problem files (in AMI mode)
-
-### API (`.dll`/`.so`/`.dylib`)
-
-- `KET`         Consider keto-enol tautomerism                      (experimental)
-- `15T`         Consider 1,5-tautomerism                            (experimental)
-- `PT_06_00`    Consider 1,3 heteroatom shift                       (experimental)
-- `PT_13_00`    Consider keten-ynol exchange                        (experimental)
-- `PT_16_00`    Consider nitroso-oxime tautomerism                  (experimental)
-- `PT_18_00`    Consider cyanic/iso-cyanic acids                    (experimental)
-- `PT_22_00`    Consider imine/amine tautomerism                    (experimental)
-- `PT_39_00`    Consider nitrone/azoxy or Behrend rearrangement     (experimental)
-- `Polymers105` Allow processing of polymers                        (experimental, legacy mode of v. 1.05)
-- `NoEdits`     Disable polymer CRU frame shift and folding
-- `NPZz`        Allow non-polymer-related Zz atoms                  (pseudo element placeholders)
-- `SAtZz`       Allow stereo at atoms connected to Zz               (default: disabled)
-- `InChI2Struct`Test mode: Mol/SDfile -> InChI -> Structure ->      (InChI+AuxInfo) -- produces `Fatal Error (2)3` just like in `InChI v.1.06`
-- `InChI2InChI` Convert InChI string(s) into InChI string(s)        -- produces `Fatal Error(2)3` just like in `InChI v.1.06`
-
-Please refrain from using the above mentioned options as they might not function properly, or will not be recognized. Regular updates with regard to their functionality will be posted on this page.
+This package is local and unpublished. Nothing here has been published, and no
+publication is authorized.

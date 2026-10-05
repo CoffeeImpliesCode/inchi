@@ -276,7 +276,10 @@ pub fn but2ene(scratch: *Scratch, parity: inchi.StereoParity0D) Error!inchi.Mole
 /// `GetStdINCHI` and `GetINCHI` both refuse it before generating anything
 /// (`inchi_dll.c:247-250` and `inchi_dll.c:275-278`), because neither the
 /// standard nor the non-standard entry point can represent a star atom; only
-/// `GetINCHIEx` can, by rewriting it to `Zz`.
+/// `GetINCHIEx` can, by rewriting it to `Zz`, which is
+/// `inchi.fromMolecule.extended`. That one needs mutable atoms, so a caller
+/// passes `scratch.atoms[0..scratch.atom_count]` rather than the `Molecule`
+/// this returns.
 pub fn pseudoAtom(scratch: *Scratch) Error!inchi.Molecule {
     scratch.* = .{};
     _ = try scratch.addAtom("*", .none);

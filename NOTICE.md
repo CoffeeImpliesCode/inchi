@@ -38,10 +38,34 @@ not receive it. See "Carried but not shipped" below.
 
 ## The grants, and which applies where
 
-**The InChI library is `MIT`.** The text is `LICENSE`, shipped verbatim in
-`.paths`, not edited, shortened or restated. The same grant is in the header of
-every one of the 100 files among the 105 in the two shipped directories that
-carry a notice.
+**The InChI library is `MIT` — and not bare MIT.** The text is `LICENSE`, shipped
+verbatim in `.paths`, not edited, shortened or restated. The same grant is in
+the header of every one of the 100 files among the 105 in the two shipped
+directories that carry a notice. Two obligations ride on top of the bare
+permission, in upstream's own bytes, and this package preserves both rather
+than summarising them away:
+
+* **The attribution notice travels, and is more than one line of it.**
+  `LICENSE:12-13` is the standard MIT notice clause. Upstream additionally
+  repeats the project's own acknowledgement block — IUPAC, the InChI Trust,
+  NIST, the external contributors named in `External-contributors`, and
+  `info@inchi-trust.org` — at the head of every notice-bearing source file,
+  including both public headers this package installs
+  (`inchi_api.h:29-37`, `ixa.h:29-37`). `External-contributors` is named by
+  that notice and lives outside the two shipped directories, so a dependent who
+  fetches this package does not receive it; see "Carried but not shipped"
+  below.
+* **The project banner identifies the software.** Upstream identifies the
+  software in the identifier itself (`1S` in every InChI, from `mode.h:258`'s
+  `INCHI_VERSION "1"`) and in the usage banner `HelpCommandLineParms` prints
+  from `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c`, with the same identification in
+  the `INCHIGEN_*` generator status strings. A consumer that ships identifiers
+  derived from this library keeps printing that identification and keeps
+  declaring the version the identifiers came from. This is why the authorised
+  `ichiparm.c` patch substitutes the **pinned source tag** for `__DATE__` and
+  `__TIME__` rather than removing the banner: the reproducibility requirement
+  and this condition agree, and removing it would satisfy one at the cost of
+  the other.
 
 Three files in the shipped set are not simply MIT, and this package does not
 claim that they are:
@@ -96,9 +120,12 @@ and in the `.paths`-filtered copy a dependent received at that time
 each verified an `ichicano.c` line holding a digest this record no longer
 names; the current whole-record replay is the driver's to run and to record, and
 it is recorded outside this package, in the root ledger's `FORKS.json` under
-`cross_test_wave`. The pre-patch receipts — `-240` over 109 records, `-221` and
-`-127` over 108 — remain history: they verified an `ichiparm.c` line holding
-upstream's bytes, and one of them describes a state before this digest existed.
+`cross_test_wave`. It has since grown by one line again — the ELF version script
+`INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`, the 110th record — so no
+receipt in this file covers the record as it stands, and none is claimed to.
+The pre-patch receipts — `-240` over 109 records, `-221` and `-127` over 108 —
+remain history: they verified an `ichiparm.c` line holding upstream's bytes, and
+one of them describes a state before this digest existed.
 
 ### An upstream attribution this package does not resolve
 
@@ -118,7 +145,7 @@ one of them for a mistake introduced here.
 
 ## MIT obligations, and how this fork meets them
 
-The MIT licence asks for one thing, quoted from the shipped text
+The MIT licence itself asks for one thing, quoted from the shipped text
 (`LICENSE:12-13`):
 
 ```
@@ -137,6 +164,22 @@ copies or substantial portions of the Software.
   requirement and no patent grant. There is no patent clause to terminate and
   no NOTICE file to propagate. That is stated here so the absence is not read
   as an omission.
+* **The two conditions above are met in the same places and the same way.**
+  The attribution block travels because every file carrying it is shipped with
+  its header unchanged, and both installed public headers carry it. The banner
+  condition is met because `ichiparm.c` still prints it: the patch changes two
+  banner *arguments*, from a wall-clock timestamp to the pinned source tag and
+  a literal no-timestamp string, and changes no format string, no position and
+  no software-version string.
+
+**The installed closure carries the notices with it.** `zig build install`
+places `LICENSE`, `NOTICE.md`, `FORK-LICENSE.md`, `UPSTREAM.md`, this README
+pair (`README.md` and the preserved upstream `README.upstream.md`) and
+upstream's own full Apache-2.0 text for the Intel TBB header at
+`share/doc/inchi/tbb/LICENSE` beside the library, in `share/doc/inchi/`. So does
+every Nix output, because `package.nix` builds this same install step. A
+consumer who installs the library receives the terms its files are under
+without having to come back to this repository for them.
 
 The five files without the notice are not a gap this fork introduced: they
 arrived that way and are unmodified.
@@ -182,18 +225,26 @@ MIT permits modification provided the notice travels, and it does: `LICENSE`
 and both files' own header comments are unchanged and both shipped, so each
 patched compilation unit carries the same grant and the same attribution as
 every other one. **Every other upstream source file, header, build file,
-licence text and document in the package is unmodified.** Of the record's 109
-lines, 108 are upstream records — this fork's bytes for those two paths and
-upstream's own for the other 106 — and the 109th is the independent fixture,
+licence text and document in the package is unmodified.** Of the record's 110
+lines, 109 are upstream records — this fork's bytes for those two paths and
+upstream's own for the other 107 — and the 110th is the independent fixture,
 which is nobody's but this package's. Upstream's digest for each patched file
 is preserved in `UPSTREAM.md` as the baseline each patch is measured against.
 
-**Added by this fork, and offered under no licence at all.** Nobody authorised
-this fork to grant its own files to anyone, and the earlier claim that they were
-"contributed under MIT" was not true and has been withdrawn. They are
-**unassigned**: no term is stated for them, and no term may be inferred from the
-absence. That is a statement about these files only — it does not touch, narrow
-or re-grant anything upstream ships, whose terms are exactly as recorded above.
+**Added by this fork, under `LicenseRef-InChI-MIT-Conditional`.** These files
+were previously **unassigned** and the "contributed under MIT" claim was
+withdrawn, because nobody had authorised this fork to grant them. The
+repository owner has since authorized a licence for the fork-authored
+additions, matching this project's primary upstream terms. The grant is
+defined in full in [`FORK-LICENSE.md`](FORK-LICENSE.md): the MIT text verbatim
+plus Condition A (the InChI attribution notice travels) and Condition B (these
+files travel as a part of the InChI software package), the latter quoted from
+`sha2.h:12-13` above. It does not touch any upstream term and does not reach
+back to a copy fetched before it existed.
+
+**No personal or corporate copyright identity is asserted.** None was supplied
+and none is invented; the owner substitutes the holder's own line before
+publication.
 
 | Path | What it is |
 |---|---|
@@ -205,22 +256,30 @@ or re-grant anything upstream ships, whose terms are exactly as recorded above.
 | `smoke.zig` | the deterministic smoke program |
 | `cross-test.profile.sh` | the settings-only `cross-test` profile this package is measured through: it fixes the build step to `test` and deliberately names no target, no runner and no host path, so the whole published platform matrix stays whole and a cell with no detected runner is reported as build-only. It is Bash that `cross-test` sources, not documentation, and it is in `.paths` because a dependent receives the same gate the tree was measured with |
 | `testdata/pubchem_known_answers.tsv` | the independent known answers — see the section below |
-| `consumer/build.zig`, `consumer/build.zig.zon`, `consumer/src/main.zig`, `consumer/.gitignore` | a separate package that depends on this one by path, to prove `dep.module("inchi")` resolves from outside |
+| `consumer/build.zig`, `consumer/build.zig.zon`, `consumer/src/main.zig`, `consumer/.gitignore` | a separate package that depends on this one by path, to prove `dep.module("inchi")` resolves from outside. `consumer/build.zig` accepts `-Dlinkage` and forwards it in `b.dependency("inchi", …)`, because `runConsumer` forwards the option into the nested build and an unrecognised `-D` there would either error or be ignored — and either way `zig build consumer -Dlinkage=dynamic` would have proved the archive while the outer graph built the shared library. `consumer/src/main.zig` and `consumer/build.zig.zon` are untouched |
 | `.github/workflows/verify.yml` | this repository's own CI; upstream's `ci.yml`, `release.yml`, `deploy_docs.yml`, `build_matrix.json` and `actions/` are untouched and are not in `.paths` |
-| `UPSTREAM.md`, `UPSTREAM.sha256`, `NOTICE.md`, `README.zig.md`, `CHANGELOG.md`, `FORK-NOTES.md` | the provenance and usage set |
-| *(no new grant)* | The withdrawal above applies to every row in this table. Reading a licence into these files from the fact that upstream's are MIT is exactly the error this section exists to prevent |
+| `UPSTREAM.md`, `UPSTREAM.sha256`, `NOTICE.md`, `README.zig.md`, `CHANGELOG.md`, `FORK-NOTES.md`, `FORK-LICENSE.md` | the provenance, usage and licence set |
+| `README.md` | this fork's own README: current source deviations, current build deviations, the current build/run/test matrix, and consumption. Upstream's own README ships beside it, byte for byte, as `README.upstream.md`, and is upstream's file under upstream's terms |
+| `package.nix`, `flake.nix`, `flake.lock`, `devenv.nix`, `devenv.yaml`, `.envrc` | the portable packaging and the canonical development shell. `package.nix` is the single source-only derivation, returning one derivation parameterised by `linkage`; `flake.nix` exposes `packages.<system>.static` and `.shared`, with `.default` preserving the SDK's static policy; `devenv.nix` keeps the SDK out of shell `packages` and exposes it lazily as `outputs.static` / `outputs.shared`. **`flake.lock` is written here**: it is a committed file pinning NixOS/nixpkgs at rev `c7def046b9a883d46974757852106483d741586f`, narHash `sha256-6RSEDHIWQtesQKWSu5qRai8L2h4KgCgMEfJHstW99G4=` — the same rev `flake.nix:15` names in `inputs.nixpkgs.url` — and it is in `.paths`, so a fetched package that carries `flake.nix` carries the lock that pins it. **`devenv.lock` is not written here** and none is invented; `devenv.yaml` pins its own input by revision, so the shell resolves without one. `flake.lock` is fork-authored and carries no SPDX identifier, because JSON has no comment syntax to carry one; it is claimed under this grant here and in `FORK-LICENSE.md` |
+| `inchi.pc` and the installed licence copies | `inchi.pc` is **generated by `build.zig` at install time**, so it is in no `.paths` entry and no integrity record. `prefix=${pcfiledir}/../..`, `Version: 1.07.5` from `bcf_s.h:52`, `Cflags: -I${includedir} -DTARGET_API_LIB -DCOMPILE_ANSI_ONLY`, `Libs: -L${libdir} -linchi`, `Libs.private: -lm` only where libm is separate, `-DBUILD_LINK_AS_DLL` only for an `msvc` shared build. `share/doc/inchi/` installs `LICENSE`, `NOTICE.md`, `FORK-LICENSE.md`, `UPSTREAM.md`, `README.md`, `README.upstream.md` and upstream's `INCHI-1-SRC/INCHI_API/tbb/LICENSE` at `tbb/LICENSE` — verbatim copies, the two READMEs under distinct names and the Apache-2.0 text in its own subdirectory |
+| `runtime/graph.zig`, `runtime/library.zig`, `runtime/load_tests.zig`, `runtime/misuse.zig` | the runtime-loading route: the build half (three modules and one generated file), this SDK's descriptor (the `inchi_rt` synchronization binding, the load-time check, the record of what a provider must be), and the two consumer-behaviour test roots |
+| `runtime/loader.zig`, `runtime/generate.zig`, `runtime/sync.c`, `runtime/sync.h` | the workspace driver's reviewed, reusable loader core, copied into this package unchanged. They are fork-side files under this grant, not upstream's and not a sibling SDK's. No file among them names this SDK's chemistry, types or symbols — the only occurrence of the string is `sync.h`'s own include guard, `INCHI_RUNTIME_SYNC_H`, and that is a preprocessor name that never reaches a symbol or an ABI boundary. What actually keeps two SDKs' loader state apart inside one process is `RT_SYNC_PREFIX`: `runtime/graph.zig:59` sets it to `inchi_rt` and `runtime/graph.zig:200-203` adds `runtime/sync.c` with `-DRT_SYNC_PREFIX=inchi_rt`, so the five `RT_FN` definitions in `sync.c` are emitted as `inchi_rt_lock`, `inchi_rt_unlock`, `inchi_rt_wait`, `inchi_rt_broadcast` and `inchi_rt_thread_self` |
 
 Edited, three files: **`.gitignore`**, and two upstream C source files,
 `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c` and
 `INCHI-1-SRC/INCHI_BASE/src/ichicano.c`.
 Everything above the line `# ---- this fork's build outputs ---` is upstream's,
-verbatim and in place — upstream's rules run through
-`INCHI-1-SRC/INCHI_API/libinchi/src/build/`, and
-none was removed to make room. The fork appended
-`.zig-cache/`, `zig-out/`, `consumer/.zig-cache/` and `consumer/zig-out/`, none
-of which swallows an upstream rule or a file this fork adds. `.gitignore` is
-therefore deliberately **not** in `UPSTREAM.sha256`: it is not byte-identical
-to upstream's.
+verbatim and in place; upstream's rules run through
+`INCHI-1-SRC/INCHI_API/libinchi/src/build/`, and none was removed to make room.
+The fork appended `.zig-cache/`, `zig-out/`, `consumer/.zig-cache/`,
+`consumer/zig-out/`, `result`, `result-*`, `.devenv/` and `.direnv/`, none of
+which swallows an upstream rule or a file this fork adds. Neither lock name is
+ignored: `flake.lock` is a tracked file at the package root, carrying the pin
+recorded in the table above, and `devenv.lock` is untracked **because it does
+not exist** — no rule hides it. Upstream's 31
+patterns are untouched and still come first. `.gitignore` is therefore
+deliberately **not** in `UPSTREAM.sha256`: it is not byte-identical to
+upstream's.
 
 **`INCHI-1-SRC/INCHI_BASE/src/ichiparm.c` and
 `INCHI-1-SRC/INCHI_BASE/src/ichicano.c`** are the others, and they are the
@@ -228,8 +287,13 @@ opposite case: they *are* in `UPSTREAM.sha256`, because `.paths` ships them and
 the build compiles them. Leaving either out would have hidden exactly the
 divergence the record exists to make loud — the lesson kept as `FORK-NOTES.md`
 L15 — so each record line is this fork's bytes and nothing is claimed about a
-pristine tree any more. The 109 records still cover the same 109 paths; what
-changed is which bytes two of them name.
+pristine tree any more. The record now covers **110** paths rather than 109:
+`INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`, upstream's own ELF version
+script, was promoted from "carried for provenance" into `.paths` when this fork
+started producing a real shared library, because a shared build passes it to
+the linker and a build cannot read a file the package does not ship. That file
+is upstream's, unmodified, and the only `.paths` addition that is an upstream
+file.
 
 ## The independent fixture, and what it is credited to
 
@@ -274,6 +338,8 @@ an identifier for lookup, not a secret.
 
 ## See also
 
+* [`FORK-LICENSE.md`](FORK-LICENSE.md) — the grant for this fork's own files,
+  its SPDX identifier, and the owner authorization behind it.
 * [`UPSTREAM.md`](UPSTREAM.md) — what the pin is, what is compiled, and what
   the integrity record does and does not establish.
 * [`UPSTREAM.sha256`](UPSTREAM.sha256) — the integrity record itself.

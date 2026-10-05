@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
+# See FORK-LICENSE.md for the full grant and the owner authorization behind it.
+
 # Verification for this fork.
 #
 # Upstream ships its own CI (ci.yml, release.yml and build_matrix.json) against
@@ -10,18 +13,46 @@
 #   licence     is the MIT notice and the per-source copyright notice still
 #               present where the licence requires them
 #   native      does the full C core build, do the installed public headers
-#               compile, link and run against the installed archive, do the
+#               compile, link and run against the installed archive *and*
+#               against the installed shared library, does the generated
+#               pkg-config metadata describe that install tree, do the tests
+#               and the smoke program pass against both artifact kinds, and
+#               does the runtime route load this build's own shared library and
+#               then refuse to answer before it has
 #   cross       does the whole thing compile for each of the six targets, with
 #               every one of them attempted and every outcome reported as it
 #               came out rather than converted into a passing job
 #   consumer    does the published module resolve from a package that did not
 #               write it
 #
+# Artifact kinds. `-Dlinkage=static|dynamic` selects one, and the default is
+# still `static`, which is what this repository built before the option
+# existed. The static steps below therefore name no flag and the shared ones
+# name the flag explicitly, so no step's artifact kind is left to be inferred.
+#
+# `cross` is the static closure for every one of its cells, and says so on its
+# command line: WASI has no shared object for a C library to be built into, so
+# `-Dlinkage=dynamic` cannot be answered for `wasm32-wasi`. The shared artifact
+# is covered by `native` and `consumer` instead, and no cell of either claims
+# otherwise.
+#
+# Dispatch kinds. `-Druntime=true|false` selects whether the facade reaches
+# libinchi through the platform loader or through a link. It is orthogonal to
+# `-Dlinkage`: both are stated on the line of every step that depends on them,
+# and no step infers either from a default.
+#
+# `cross` is the static LINKED closure for every one of its cells. The runtime
+# route is not something a compile-and-run matrix cell can stand for — it needs
+# a named provider — so it is covered by the `native` job against a real
+# libinchi this build just produced, and the loader's own suite is left to a run
+# that can name both of the objects it requires. Nothing here claims a cell
+# covers a configuration it was not built as.
+#
 # No job compares source text or declaration names. A reindented line defeats a
 # name-set comparison, and a retyped declaration slips past one; neither proves
 # that a consumer can call the header. The header's coverage is the C program
-# below, which is compiled and linked against the installed header and archive
-# and then run.
+# below, which is compiled and linked against the installed header and against
+# the installed archive and the installed shared library, and then run.
 
 name: verify
 
@@ -187,6 +218,129 @@ jobs:
       - name: smoke
         run: zig build smoke --summary all
 
+      # The same C program, compiled and linked against the *shared* artifact
+      # instead of the archive. The source file written by the step above is
+      # still in $RUNNER_TEMP; it is not rewritten, because one program
+      # exercised against both artifact kinds is the point — it is the consumer
+      # that must not be able to tell them apart, and a second copy of the
+      # program could differ.
+      #
+      # `-Dlinkage=dynamic` is the only new thing this build does. The library's
+      # own defaults are untouched: the default is still static, which is why the
+      # step above needed no flag and this one does.
+      - name: shared artifact builds and installs
+        run: zig build -Dlinkage=dynamic --summary all
+
+      - name: the same C consumer links and runs against the installed shared library
+        run: |
+          set -euo pipefail
+          # No INCHI_API export macro here. The installed ELF shared library is
+          # exported by upstream's own libinchi.map version script, not by a
+          # declaration macro, and these headers are read with the plain
+          # `inchi_api.h:704-709` declarations. The macros the shared build
+          # needs on the compile line are the same two the archive needed, plus
+          # the MSVC-only export pair, and this runner is not MSVC.
+          zig cc -std=c11 -DTARGET_API_LIB -DCOMPILE_ANSI_ONLY \
+            -I zig-out/include \
+            "$RUNNER_TEMP/c_surface_gate.c" \
+            -L zig-out/lib -linchi \
+            -lm \
+            -o "$RUNNER_TEMP/c_surface_gate_shared"
+          # A shared library has to be found at run time, and a versioned
+          # artifact is exactly the case where the unversioned link name has to
+          # resolve to the file the install actually created.
+          LD_LIBRARY_PATH="$PWD/zig-out/lib" "$RUNNER_TEMP/c_surface_gate_shared"
+
+      - name: the installed pkg-config metadata describes this install tree
+        run: |
+          set -euo pipefail
+          export PKG_CONFIG_PATH="$PWD/zig-out/lib/pkgconfig"
+          # Read back from pkg-config rather than from the file, so what is
+          # checked is what a dependent would actually be handed.
+          cflags="$(pkg-config --cflags inchi)"
+          libs="$(pkg-config --libs inchi)"
+          echo "cflags: $cflags"
+          echo "libs:   $libs"
+          # The relocation-safe prefix: the .pc locates itself through
+          # ${pcfiledir}, so it resolves to this tree without --prefix ever
+          # having been written into it.
+          case "$libs" in
+            *"-L$PWD/zig-out/lib"*) ;;
+            *) echo "pkg-config did not return this install tree's libdir" >&2; exit 1 ;;
+          esac
+          case "$cflags" in
+            *"-I$PWD/zig-out/include"*) ;;
+            *) echo "pkg-config did not return this install tree's includedir" >&2; exit 1 ;;
+          esac
+          case "$cflags" in
+            *"-DTARGET_API_LIB"*) ;;
+            *) echo "pkg-config dropped the macro the library was built with" >&2; exit 1 ;;
+          esac
+          # A pkg-config-driven consumer, so the metadata is exercised by
+          # something that only ever saw pkg-config.
+          gcc -std=c11 $cflags "$RUNNER_TEMP/c_surface_gate.c" $libs \
+            -o "$RUNNER_TEMP/c_surface_gate_pc"
+          LD_LIBRARY_PATH="$PWD/zig-out/lib" "$RUNNER_TEMP/c_surface_gate_pc"
+
+      - name: test against the shared artifact (Debug)
+        run: zig build test -Dlinkage=dynamic -Doptimize=Debug --summary all
+
+      - name: test against the shared artifact (ReleaseSafe)
+        run: zig build test -Dlinkage=dynamic -Doptimize=ReleaseSafe --summary all
+
+      - name: smoke against the shared artifact
+        run: zig build smoke -Dlinkage=dynamic --summary all
+
+      # ---- The runtime route ------------------------------------------------
+      #
+      # `-Druntime=true` is orthogonal to `-Dlinkage`: it changes how the facade
+      # reaches libinchi, not what was built. The artifact is built and
+      # installed either way, so this step still produces libinchi.so — and then
+      # the program built against it must name that file as a provider before
+      # anything else works. Nothing is loaded by default and no other file is
+      # tried, so a runtime build that quietly fell back to linking would fail
+      # here rather than pass.
+      #
+      # `runtime-test` is deliberately NOT run in this workflow. Its rules are
+      # that nothing is skipped when a provider is missing: it needs
+      # INCHI_TEST_PROVIDER and INCHI_TEST_ALIEN, and INCHI_TEST_ALIEN has to be
+      # a loadable object that is not libinchi at all. Building such an object
+      # here would be inventing a fixture this repository does not have, so the
+      # loader's own behavioural suite is left to a run that can name both.
+      - name: runtime route builds, installs and generates its dispatch
+        run: zig build -Druntime=true -Dlinkage=dynamic --summary all
+
+      - name: the consumer loads this build's own libinchi through the loader
+        run: |
+          set -euo pipefail
+          zig build consumer -Druntime=true -Dlinkage=dynamic --summary all -- \
+            --provider "$PWD/zig-out/lib/libinchi.so"
+
+      - name: a call after a real load produces the published answer
+        # The control. `after-load` is the mode that must succeed: the same call
+        # `pre-load` stops on, reached through the same table once a provider is
+        # loaded, has to produce PubChem's identifier for water. Without it, the
+        # stop below would be indistinguishable from a build broken for some
+        # unrelated reason.
+        run: ./zig-out/bin/misuse after-load "$PWD/zig-out/lib/libinchi.so"
+
+      - name: a call before any load stops the program
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/pre_load"
+          status=0
+          ./zig-out/bin/misuse pre-load >"$out" 2>&1 || status=$?
+          cat "$out"
+          # The assertion is the exit status and nothing more: this step says
+          # "a call that arrives before any provider does not return a value",
+          # and does not claim the message says anything in particular. What the
+          # message contains is checked where the message is written.
+          if [ "$status" -eq 0 ]; then
+            echo "a call before any load returned instead of stopping" >&2
+            exit 1
+          fi
+          exit 0
+
   cross:
     name: check ${{ matrix.target }}
     runs-on: ubuntu-latest
@@ -215,6 +369,23 @@ jobs:
         # there is no continue-on-error, no blanket allowance and no substitute
         # implementation anywhere in this workflow.
         #
+        # `-Dlinkage=static` is named rather than left to the default, so a
+        # cell's artifact kind is stated rather than inferred. It is the static
+        # closure because it is the closure every cell in this matrix can have:
+        # WASI has no shared object for a C library to be built into, so
+        # `-Dlinkage=dynamic` cannot be answered for `wasm32-wasi` at all. That
+        # is a platform fact, it is not worked around by dropping the cell, and
+        # no cell here claims to have checked a shared artifact.
+        #
+        # `-Druntime=false` is named for the same reason, and it is the flag that
+        # would be easiest to leave out: a linked cell still compiles and still
+        # runs the behavioural tests, so nothing about it would look wrong. What
+        # it would not be is a runtime cell. The loader's Unix backend calls
+        # `dlopen`, which WASI does not have, and a runtime cell would need a
+        # named provider that a compile-and-run matrix cannot supply. So the
+        # matrix is the static LINKED closure, every cell of it, and the runtime
+        # route is covered where a real provider exists.
+        #
         # No cell is expected to fail and none is excused. The
         # `#include <sys/timeb.h>` in INCHI_BASE/src/ichicano.c that a macOS
         # cell could not find is wrapped in `#ifndef COMPILE_ANSI_ONLY`, and
@@ -237,13 +408,13 @@ jobs:
           # GitHub runs `bash -e`, so the status is captured through `||`
           # rather than read after a bare call, which would abort first.
           status=0
-          zig build check -Dtarget="$target" --summary all || status=$?
+          zig build check -Dtarget="$target" -Dlinkage=static -Druntime=false --summary all || status=$?
           {
             echo "### check $target"
             echo
             echo "- exit status: \`$status\`"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "check $target exited $status"
+          echo "check $target (static linked closure) exited $status"
           exit "$status"
 
   consumer:
@@ -263,3 +434,11 @@ jobs:
       - name: run
         working-directory: consumer
         run: zig build run
+
+      # The same consumer against the shared artifact. `consumer/build.zig`
+      # reads `-Dlinkage` and hands it to `b.dependency`, so this really does
+      # build the shared library and really does link against it, rather than
+      # resolving the dependency's own default and proving the archive.
+      - name: run against the shared artifact
+        working-directory: consumer
+        run: zig build run -Dlinkage=dynamic

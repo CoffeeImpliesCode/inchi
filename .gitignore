@@ -47,3 +47,15 @@ zig-out/
 # run from the repository root cannot commit it by accident.
 consumer/.zig-cache/
 consumer/zig-out/
+
+# Nix and development-environment outputs. `package.nix`, `flake.nix`,
+# `devenv.nix`, `devenv.yaml` and `.envrc` are tracked; what those files
+# *produce* is not. `nix build` writes a `result` symlink beside the flake
+# (and `result-<name>` for a named output), `devenv` keeps its loaded state in
+# `.devenv/`, and `direnv` — which `.envrc` exists for — keeps its cache in
+# `.direnv/`. None of these three patterns can swallow a file this fork ships:
+# no shipped path is named `result` or starts with `.devenv`/`.direnv`.
+result
+result-*
+.devenv/
+.direnv/

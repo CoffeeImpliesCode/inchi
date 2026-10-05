@@ -1,5 +1,7 @@
 /*
- * translate.h - the translation unit root for addTranslateC in bundled mode.
+ * SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
+ * See FORK-LICENSE.md for the full grant and the owner authorization behind it.
+ *
  *
  * Zig's `zig translate-c` reads exactly one header and makes every declaration
  * it can see available to Zig as the module `c`, which zig/root.zig imports.
@@ -24,6 +26,24 @@
  * Windows. build.zig defines the identical pair on the C core's own compile
  * line; this header is the same pair on the translation's line, so the two
  * sides of the binding cannot drift apart.
+ *
+ * BUILD_LINK_AS_DLL and _USRDLL are deliberately *not* here, for either
+ * linkage. They are the two macros behind `inchi_api.h:691`, the branch that
+ * turns `INCHI_API` into `__declspec(dllexport)` when `_USRDLL` is also
+ * defined and into `__declspec(dllimport)` when it is not - and that branch
+ * additionally requires `_WIN32` and `_MSC_VER`, so it is reachable only on an
+ * MSVC-ABI Windows build. This translation is the consuming side: Zig links
+ * whichever artifact build.zig produced, static or shared, directly, so a
+ * `dllimport` decoration here would add an import-library constraint a direct
+ * link does not have, and a `dllexport` one would export InChI from every
+ * program that uses it. The export decoration belongs on the compile line of
+ * the core itself, which is where the definitions are, and build.zig puts it
+ * there for `-Dlinkage=dynamic` on an MSVC ABI.
+ *
+ * On every other target the exported set is decided by the linker instead:
+ * upstream's own `libinchi.map` as the version script for the ELF shared
+ * library, and the auto-export a MinGW DLL already does. No declaration here
+ * is decoration-dependent on those, because none of them is a macro.
  *
  * The guards are `#ifndef` so an external -D of the same macro, from a
  * consumer's own build, cannot turn into a redefinition.

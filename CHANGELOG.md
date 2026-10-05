@@ -8,8 +8,12 @@ This file records **only** what this fork changed relative to InChI `v1.07.5`
 Every gate named here was run by the driver. Where a correction has not been
 gated since it was made, that is said in the entry, and no green result is
 claimed for it. Each entry keeps the receipts that were current when its claim
-was made; **§29 is the current cutover** — the receipts that describe the tree as
-it stands — and the full table is in `README.zig.md` § Verification status.
+was made. **No entry below describes the tree as it stands.** §29 was the
+current cutover until §36 landed; §36 changed the build graph, the installed
+closure, the integrity record and the documentation, and nothing has been gated
+over it since. The current matrix, with each row marked history or
+`PENDING-VERIFICATION`, is in [`README.md`](README.md) § Current build, run and
+test matrix; the full receipt table is in `README.zig.md` § Verification status.
 
 ## 1. Added the Zig 0.16 package
 
@@ -1037,11 +1041,13 @@ very documents.
 `build_timeout_seconds: 3600`, `run_timeout_seconds: 300`,
 `bookkeeping_failure: false`, harness `exit_code: 0`, `target_count: 53`,
 counts `pass 20`, `fail 0`, `build_only 33`, `partial 0`. All 53 cells compiled
-the file as it ships. The 20 cells with a runner each executed the full 16-test
-suite — 320 tests run, every one `Build Summary: 6/6 steps succeeded; 16/16
-tests passed`, `reason: tests_complete`, `command_exit: 0` — and the other 33
-stayed `build_only` with `reason: runtime_unavailable`, which is compile
-coverage and is never counted as a pass. **No foreign BSD, macOS, Mac
+the file as it stood at `2026-10-02T07:12:59Z`; **§38** is what says why that is
+not the same statement as "the file as it ships". The 20 cells with a runner
+each executed the then-full 16-test suite — 320 tests run, every one
+`Build Summary: 6/6 steps succeeded; 16/16 tests passed`,
+`reason: tests_complete`, `command_exit: 0` — and the other 33 stayed
+`build_only` with `reason: runtime_unavailable`, which is compile coverage and
+is never counted as a pass. **No foreign BSD, macOS, Mac
 Catalyst, Windows or WASI binary was executed in any cell.** Receipt
 `local://foundation-cross-test-final-current-inchi.json`, per-cell
 `local://foundation-cross-test-final-current-inchi-<target>.log`.
@@ -1058,8 +1064,10 @@ forward, and §30's and §32's own text already say which tree it describes.
 steps succeeded`, exit 0, between `2026-10-02T07:23:30.237Z` and
 `2026-10-02T07:23:32.431Z`, `complete: true`, `unrun_cells: []`, per-cell
 `local://foundation-cross-test-final-baseline-inchi-<target>.log`. The §32
-native wave is unaffected and remains current on the same tree: 16/16 in Debug,
-16/16 in ReleaseSafe, plus smoke, install and consumer, all exit 0.
+native wave is unaffected by that round: 16/16 in Debug, 16/16 in ReleaseSafe,
+plus smoke, install and consumer, all exit 0. **Superseded as current by §38:**
+those sixteen are the tests the file declared when the wave ran, and the file
+as it ships declares twenty-two.
 
 **What this entry does not change.** No source byte, declaration, algorithm,
 ABI, line number or digest moved with any of these runs. The deviation is the
@@ -1244,3 +1252,597 @@ foreign-architecture answers and every fresh native, baseline, matrix and
 package wave over it are unrun here and are named `PENDING-VERIFICATION` there,
 not green. The gate table is where the driver records that closure; this file
 states no result for it.
+
+## Zig API contract alignment — 2026-10-03
+
+**Condition.** Native output allocations have one owner. Warning flags have
+two distinct dimensions and do not by themselves equal the return status.
+
+**Fix.** State Output/Structure/AuxInfo ownership, alias copies, borrowed
+views and matching releases. Correct warning dimensions and bit-definition
+citations. Document reachable construction enums and raw fields, atom-symbol
+termination and interior-NUL duties, bond counts, input lifetimes, option
+handling, diagnostic emptiness and unknown key-code information loss. Replace
+the module fragment with a complete executable sequence.
+
+**Verification and bound.** Zig 0.16.0, native Linux x86-64: install,
+Debug/ReleaseSafe tests, smoke, package consumer and module example pass.
+The published compile-only `check` matrix passes. No new system-provider or
+foreign runtime result is claimed. Native bytes and pins are unchanged.
+
+## 36. Standalone Nix packaging, devenv as the canonical shell, and an owner-authorized fork licence
+
+**Condition.** Three problems. The package had no way to be consumed off this
+workspace: no derivation, no flake, no development shell, and nothing that
+pinned a nixpkgs. The installed closure was a bare archive and two headers —
+no link metadata, no licence text beside them. And this fork's own files had no
+licence at all, because nobody had authorised this fork to grant them.
+
+**Fix, in five parts.**
+
+* **`package.nix` is one source-only derivation**: an ordinary uncurried
+  function over `lib`, `stdenv`, `zig` and an optional `linkage` defaulting to
+  `static`, returning one derivation. Both entry points call it identically,
+  `pkgs.callPackage ./package.nix { zig = pkgs.zig_0_16; inherit linkage; }`, so
+  the flake and the development shell cannot describe two different builds. It
+  reads the version out of `INCHI-1-SRC/INCHI_BASE/src/bcf_s.h:52` rather than
+  repeating it and throws rather than guessing if that line is gone; it names
+  its inputs as an explicit `lib.fileset`, which also excludes `.git`,
+  `.zig-cache`, `zig-out`, `zig-pkg`, `.devenv*`, `.direnv` and `result*` from
+  the source hash; and it installs only, invoking
+  `zig build install -j"…NIX_BUILD_CORES…" -Doptimize=ReleaseSafe -Dcpu=baseline
+  -Dlinkage=<variant> --prefix "$out"` exactly once, with both Zig caches
+  exported under the Nix-provided `TMPDIR`. `dontInstall` is deliberately not
+  set. `linkage` takes `static` or `dynamic` — the `build.zig` option values.
+  Nothing else is owned here: the source list, C flags, header configuration
+  and the installation of the library, headers, `.pc` and licence material all
+  belong to `build.zig`.
+* **The variants are made by the entry points.** `flake.nix` exposes
+  `packages.<system>.static` and `packages.<system>.shared` (mapping to
+  `linkage = "static"` and `"dynamic"`), with `.default` preserving the SDK's
+  static policy and no prefixed aliases. One fixed nixpkgs input,
+  `github:NixOS/nixpkgs/c7def046b9a883d46974757852106483d741586f`. Its
+  `devShells.default` is tools-only. Nothing in the file calls
+  `builtins.getEnv`, because an impure read forces `--impure` on every consumer
+  of the flake.
+* **`devenv.nix`, `devenv.yaml` and `.envrc` make devenv the canonical
+  interface.** Its `packages` is tools only — `zig_0_16` and the C toolchain —
+  and the same two derivations are exposed **lazily** as `outputs.static` and
+  `outputs.shared`, built with `devenv build outputs.static` /
+  `outputs.shared`, so entering the shell does not build the SDK. Scripts live
+  under one `sdk` namespace and carry real commands. The input is pinned to
+  `github:cachix/devenv-nixpkgs/c2f38fe7f9e04d9aadd354d380f2bd40531d9737`
+  rather than `rolling`. `devenv.yaml`'s `clean` list names only devenv's own
+  `generated state and deliberately not `.zig-cache/` or `zig-out/`. **§39
+  supersedes what this entry said about lock files**: `flake.lock` is committed
+  here and is a `.paths` entry, and `devenv.lock` still does not exist in this
+  repository.
+* **The integrity record gained a line and moved a name.** `UPSTREAM.sha256`'s
+  record for upstream's README now names `README.upstream.md`, the path those
+  exact bytes are preserved at; the digest `90c885da…` is unchanged, because
+  the bytes are. `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`, upstream's
+  own ELF version script, was promoted out of "carried for provenance" into
+  `.paths` — a shared build passes it to the linker, and a build cannot read a
+  file the package does not ship — and is hashed as the record's **110th** line,
+  `9c90980efa8c3310b624b334dc9e5c384e83d9790214746c80fc59f7fc4b16c2`. It is
+  upstream's file, unmodified, and read only on ELF targets under
+  `-Dlinkage=dynamic`.
+* **This fork's own files now have a grant, with the owner's authorization
+  behind it.** `FORK-LICENSE.md` defines **`LicenseRef-InChI-MIT-Conditional`**:
+  the MIT text verbatim, plus the two obligations upstream's own files carry —
+  the InChI attribution notice travels, and the version banner identifies the
+  software — plus upstream's own coupling condition from `sha2.h:12-13`, that
+  these files are redistributed and modified as a part of the InChI software
+  package. It is `LicenseRef-` and not `MIT` because a scanner that stops at the
+  permission grant misses all three. **No personal or corporate copyright
+  identity is asserted anywhere**: none was supplied and none is invented, so
+  the grant says a holder exists and does not name one, and the owner must
+  substitute that line before publication. The earlier record — these files
+  **unassigned**, and the "contributed under MIT" claim withdrawn — is what it
+  was, and the grant does not reach back to a copy fetched before it existed.
+
+**`README.md` is now this fork's document**, in the required order: current
+source deviations, current build deviations plus this history link, the current
+build/run/test matrix, then consumption. Upstream's own README is preserved
+unchanged beside it as `README.upstream.md`, byte for byte, and is upstream's
+file under upstream's terms. `README.zig.md` keeps the Zig interface and the
+full receipt table and says so at the top.
+
+**Verification and bound.** **Nothing in this entry has been gated.** Every
+receipt anywhere in this package was taken before it. No shared library, no
+`inchi.pc`, no Nix evaluation, no devenv shell and no `sha256sum -c` over the
+110-line record exists. All of it is `PENDING-VERIFICATION` in the matrix in
+`README.md`, and the driver owns the runs. **Bound:** a host with Zig 0.16.0,
+`nix` and `devenv`; the derivation builds for its own platform only and claims
+no cross-compilation, no hermeticity beyond the nixpkgs pin, and no wholly
+static executable — `libinchi` links libc and libm, so a `.shared` consumer
+needs a dynamic loader and a `.static` archive still needs its libc at run time.
+
+## 37. Runtime loading, documented from the landed source
+
+**Condition.** The package had no way to state the runtime route at all, and an
+earlier pass in this same wave removed the rows that mentioned it as staged
+incompleteness. That was wrong twice over: the route is landing now, and
+describing a feature as absent is not the same as not claiming it.
+
+**Fix.** `-Druntime=true`, default `false`. When set, `build.zig` replaces
+exactly one call in the bundled arm — `module.linkLibrary(artifact.?)` — with
+`runtime/graph.zig createModule(b, translate_c, target, optimize)`, and the
+facade's `c` import becomes the generated dispatch. The C artifact is built
+and installed either way. The four pieces and their owners are in
+`README.zig.md` § Runtime loading: the driver's reviewed core in
+`runtime/loader.zig`, `generate.zig`, `sync.c` and `sync.h`; this SDK's
+descriptor in `runtime/library.zig`; the dispatch generated from the actual
+translation output; and the two consumer-behaviour test roots.
+
+The option is `-Druntime=true|false`, default `false` — settled, with no
+alternative offered. It is orthogonal to `-Dlinkage`: which artifact, and which
+dispatch. `-Druntime=true` together with `-fsys=inchi` **panics at configure
+time** with a message saying why, because system mode's contract is to bind to
+an installed `libinchi` and a runtime build does not bind to one; it is refused
+rather than resolved in favour of either side, because silently dropping one
+would build something the caller did not ask for under a name that says they
+did.
+
+**The two runtime steps, as they are.** `runtime-test` exists **only** under
+`-Druntime=true` — `addTest` plus `addRunArtifact` on
+`runtime/load_tests.zig` — and it needs both `INCHI_TEST_PROVIDER` and
+`INCHI_TEST_ALIEN`, skipping nothing when either is missing, so it cannot be run
+where both cannot be named. It is deliberately not in CI: `INCHI_TEST_ALIEN`
+must be a loadable object that is not `libinchi`, and inventing one would be
+fabricating a fixture this repository does not have. `misuse` is built and
+installed by `zig build` in **every** configuration, and **no step runs it and
+asserts an exit status**, because two of its three modes are supposed to stop
+and which two depends on the configuration; `zig build` owes that it produces
+the program and running the three commands is the caller's. The executable is
+installed as `misuse`, matching the header in `runtime/misuse.zig` that
+documents `pre-load`, `after-load <path>` and `linked-load`.
+
+**The cross gate is explicit, not incidental.** `cross-test.profile.sh`'s
+`CROSS_BUILD_ARGS` and the CI `cross` job both name `-Dlinkage=static
+-Druntime=false`, so the 53-cell matrix is the static linked closure by
+construction rather than by omission.
+
+**What else this wave settled.** `consumer/build.zig` forwards `b.args` to the
+run step, so `zig build consumer -Druntime=true -- --provider <path>` is a real
+command; before that the documented command line would have silently done
+nothing and the environment variable was the only way to name a provider.
+`runtime/` is in `build.zig.zon` `.paths` whole.
+
+**What is now documented rather than assumed.** `LoadSource` is a two-arm
+union — `.path` for an absolute file path, `.system` for a named library, both
+passed to the platform loader unchanged, with no path-to-system fallback. The
+`LoadError` set is named in full. The provider requirements are read out of
+`runtime/library.zig`: every `extern` the translated header declares, with
+`FreeInChIExtInput` the single deliberate exception because upstream's own
+`libinchi.map` does not export it; the same `inchi_api.h`/`ixa.h` with the same
+`MAXVAL`, `ATOM_EL_LEN`, `NUM_H_ISOTOPES`, `STR_ERR_LEN`,
+`MAX_NUM_STEREO_ATOM_NEIGH`, `MAX_NUM_STEREO_BONDS`, `INCHI_NUM` and
+`FIND_RING_SYSTEMS` settings, because those fix the struct layouts the facade
+itself hands across; a plain C calling convention with no variadics and no
+exported data; and upstream's own allocator, which is also why a Zig leak
+oracle cannot see it. The load-time check is `CheckINCHIKey` against a
+published InChIKey and a non-key, and the document says plainly what that is —
+a check that two routed entry points behave, not a compatibility verdict.
+
+**Verification and bound.** **Nothing here has been gated.** No runtime build
+and no load has been performed in this workspace, and the 53-cell matrix does
+not cover this route: its cells are named without `-Druntime` and are the static
+linked closure. Every runtime row is `PENDING-VERIFICATION` in the matrix in
+`README.md`. **Bound:** a target with a dynamic library loader; the loader's own
+`UnsupportedTarget` is the honest refusal where there is none, and no fallback
+to a linked copy stands behind it.
+
+## 38. Every "as it ships" test total in this file was a count of an earlier file
+
+**Condition.** §32 and §33 recorded three green waves and summarised them as
+current: the stable native wave at `expected_tests: 16`,
+`observed_tests_passed: 16`, `verification_status: success` under "stable wave,
+on the shipped arrangement", and `16/16` again at "remains current on the same
+tree". Six further top-level test blocks then landed in `tests.zig` on their own
+migration wave, adding directions that file did not have when those waves ran.
+
+**What is wrong, and what is not.** **No receipt is falsified.** Those waves
+really did execute sixteen tests and really did exit 0, on the tree they were
+run against; every number stays. The defect is the *currency* word. `tests.zig`
+as it ships declares **twenty-two** top-level `^test "` blocks — read out of
+the file, and the only thing in this entry that was not already recorded
+elsewhere — so no receipt in this package has executed the six
+migration-wave additions, including both extended polymer/V3000 routes and the
+two error-residue paths. A row labelled current for the file as it ships, whose
+numbers cannot be produced by the file as it ships, is the shape of the
+failure; nothing failed.
+
+**The correction, and where it lands.** The receipts are kept and the
+*currency* is withdrawn. §33's two load-bearing sentences now say "the file as
+it stood at `2026-10-02T07:12:59Z`" and "superseded as current by §38" rather
+than "the file as it ships" and "remains current on the same tree".
+`FORK-NOTES.md` carries the same correction at decision 19's observed block,
+at L9's "Resolved, and where" and at L17's "Resolved, and how", and the lesson
+is **L29**. Historical rows elsewhere in this file that quote `16/16` as what
+their own run printed are left exactly as they are: a receipt reports what a run
+said. §33 already declared the *earlier* matrix run history, and §32 already
+declared its own arrangement superseded by §33; the stable wave was the one row
+left still claiming to be current, and this entry is what withdraws it.
+
+**Compile coverage is untouched, and deliberately so.** The six-target `check`
+baseline and every `build_only` matrix cell stay current, because compile
+coverage does not move when a test is added. Only test totals moved.
+
+**No test is added for this.** A permanent test asserting how many tests the
+file declares would fail on the next test anyone adds and would pin a number
+rather than a behaviour. The count is recorded here instead, and the next wave
+that runs this suite is the gate that settles it.
+
+**Status: `PENDING-VERIFICATION`.** The count is `SOURCE-CONFIRMED` from
+`tests.zig`. No wave has yet executed the twenty-two-test suite, so this entry
+states a correction landed, not a result observed; the driver's next native
+wave is what moves it. `FORK-NOTES.md` **L29** is the transferable form.
+
+## 39. A committed `flake.lock` is shipped, because `flake.nix` is
+
+**Condition.** The entry above recorded the position as "no lock file is
+written here; `flake.lock` and `devenv.lock` belong to the operator". That was
+true when it was written and is no longer. `flake.lock` is now committed in
+this package and `build.zig.zon` lists it in `.paths` beside `flake.nix`. The
+manifest is not this entry's file; the record of it is, because a change to the
+package's contents with no numbered entry leaves the two disagreeing.
+
+**What is in the lock, read out of the file.** `version 7`, one node,
+`nixpkgs`, `owner: NixOS`, `repo: nixpkgs`, `type: github`, locked and original
+both at rev `c7def046b9a883d46974757852106483d741586f`, `lastModified`
+1789370336, `narHash`
+`sha256-6RSEDHIWQtesQKWSu5qRai8L2h4KgCgMEfJHstW99G4=`. That rev is the same one
+`flake.nix` puts in `inputs.nixpkgs.url`, so the file pins the input the flake
+already names rather than introducing a second one.
+
+**Why shipping it is the rule and not a preference.** `.paths` is a hard
+filter, so a consumer that received `flake.nix` without the lock would
+re-resolve nixpkgs and write a lock into their own copy — the one thing a lock
+exists to prevent. The package is meant to be standalone and reproducible for
+a dependent, and a dependent is exactly the case where reproducibility is paid
+for.
+
+**`devenv.lock` stays absent, deliberately.** No such file exists in this
+repository and none is invented to fill the slot. `devenv.yaml` pins its own
+input by revision, so the shell resolves without one. An absent lock is a
+different fact from a shipped one, and the two are recorded separately for that
+reason.
+
+**`package.nix` is a different axis and is unaffected.** Its `lib.fileset`
+allow-list is exactly what `zig build install` reads, and a Nix derivation may
+exclude locks from its native build source *after* the flake frontend has
+resolved locked inputs — which is what it does. Nothing here changes which
+files a native build compiles.
+
+**Status: `PENDING-VERIFICATION`.** The lock's contents are `SOURCE-CONFIRMED`
+from `flake.lock` and `build.zig.zon` as they now stand. No filtered fetch,
+package-identity or provenance gate has run over this tree since the `.paths`
+change, so any package identity recorded before it is stale and is to be
+re-derived by the driver once, after source and documentation freeze — not once
+per edit.
+
+## 40. A raw signed count was being cast, not checked, and the answer depended on `-Doptimize`
+
+**Condition.** `Atom` is upstream's `inchi_Atom` unchanged and `Atom.num_bonds`
+is the raw count that bounds `neighbor`, `bond_type` and `bond_stereo` together
+(`inchi_api.h:165-171`). It is an `AT_NUM` — a `signed short`
+(`inchi_api.h:124`) — on a caller-writable struct, so a negative value is
+representable. The private reader `used()` converted it with a bare
+`@intCast`, and `connect` called that reader *before* its capacity test.
+
+**What one call did.** With `num_bonds = -1` written by hand and `connect`
+called, the answer was chosen by the optimisation mode rather than by the
+contract:
+
+- **Debug / ReleaseSafe** — the checked `@intCast` traps. Observed by the
+  driver: `bg719`, **ABRT**, "integer does not fit" at `zig/root.zig:1721`,
+  reached from `connect` at `:1136`.
+- **ReleaseFast / ReleaseSmall** — the unchecked cast wraps the value, so the
+  input to everything downstream is one the language does not define. Observed
+  by the driver: `bg721` **did not terminate** and was still running, single
+  threaded, on the same frozen probe; no exit status and no output were
+  obtained, and no "passes" is claimed for it.
+
+The module header promised the opposite: each bound is "checked where a caller
+can act on it, with an ordinary comparison rather than an assertion". The
+sibling reader `borrowedArray` already did exactly that, with `count <= 0`.
+
+**The change.** Three statements, and no new error:
+
+- `used()` is total: a non-positive count is 0, mirroring `borrowedArray`. It
+  can no longer trap on a value the field is declared to hold.
+- A new private `countOutOfRange` refuses any count outside
+  `0..max_bonds_per_atom`, and `connect` calls it for both atoms before either
+  list is written.
+- The refusal reuses the **existing** `error.TooManyNeighbors`, whose
+  documentation now states the whole range instead of only its ceiling. The
+  module's error set is unchanged, `connect`'s signature is unchanged, and
+  there is no shim and no second error for the same kind of refusal.
+
+**Why a negative count is "no room", not "a shorter list".** The API states the
+range itself at `inchi_api.h:171` — "Index j is in the range 0 <= j <=
+(atom[i].num_bonds-1)" — and the compiled closure reads the field as
+`for (j = 0; j < num_bonds; j++)`, at
+`INCHI-1-SRC/INCHI_API/libinchi/src/ichilnct.c:297`. A negative count therefore
+reads nothing at all, which means a bond appended at index 0 would overwrite
+entries upstream never promised to read but that the caller did write. The
+record is refused rather than repaired, and the caller's bytes are left exactly
+as they were.
+
+**What a citation this entry does not use.** An earlier draft of this entry
+cited `e_0dstereo.c:983` for that loop. That file is not part of this library's
+compile closure — it is `INCHI-1-SRC/INCHI_API/demos/inchi_main/src/`, a demo —
+so naming it would have cited a demo as the library's own reader.
+`runichi2.c:940` is left out for the other reason: it appeared in a grep and was
+never opened.
+
+**Cost.** One private helper added, one reader made total, one guard widened,
+four documentation sites corrected (`Error.TooManyNeighbors`, `Atom`, `connect`,
+`used` and `countOutOfRange`), and one regression added to the existing test
+`"the facade refuses input it cannot pass on faithfully"` rather than as a new
+top-level block — which is why §38's count is unaffected by this entry. No error
+was added, no signature changed, no caller changed, and no native byte moved.
+
+**Status: `PENDING-VERIFICATION`, with the before half observed.** `bg719` is a
+driver observation of the defect and is recorded as such. Nothing here has been
+re-run after the change: the probe at
+`/home/tmp2/gertullj/scratch/foundation-libs/contract-physics-lua/api-repros/inchi`
+is unchanged and expects, in both modes, the same refusal in Debug and in
+ReleaseFast with a bounded exit. `zig/root.zig`'s own test suite and the native
+waves are the driver's to run. `FORK-NOTES.md` **L30** is the transferable form.
+
+## 41. The devenv scripts name this tree, and build and install outside it
+
+**Condition.** §36 made devenv the canonical interface and gave this shell six
+scripts, and left four properties the acceptance recipe depends on unstated.
+A devenv script is materialised as a generated program that inherits the
+caller's working directory, so `sdk:build` and `sdk:test` ran `zig build`
+against whatever directory the caller happened to be standing in, and the
+driver enters this shell from a scratch project directory that holds no
+`build.zig`. Both install bodies defaulted their prefix to `$PWD/zig-out`,
+which after that `cd` is this checkout — the tree `UPSTREAM.sha256` and the
+driver's source digest cover. And all four bodies reached the build runner with
+no job flag, no `--summary all` and no `--cache-dir`, so a canonical command
+gave the runner whatever the host's core count happened to be and left its
+caches to defaults — one of which is this checkout's own `.zig-cache`.
+
+**Fix, in four parts, all inside `devenv.nix`.**
+
+- **Every script body begins by changing into this SDK's own directory.** It
+  is `./.` in the module rendered once as `builtins.toString ./.` through
+  `lib.escapeShellArg`, with `exit 1` on a failed `cd`, so no two bodies can
+  drift on it and none of them builds or checks in a directory that has no
+  `build.zig`. `builtins.toString` rather than an interpolated `${./.}`:
+  interpolating the path asks Nix for the store copy of this whole tree, and
+  that copy is read-only and is not the working tree `sha256sum -c` describes.
+  `$DEVENV_ROOT` was never the variable to trust; it names the project
+  directory `devenv --from path:<this SDK>` creates beside this tree. All six
+  scripts carry the line, the two `devenv build` ones included, because
+  `devenv build` reads the project it is standing in.
+- **The two installing scripts pass `--prefix` themselves.** `zig build
+  install`'s own default is `zig-out` beside the build root. The prefix is
+  `$INCHI_PREFIX` when the caller exported one — the name these bodies already
+  read, and the only prefix variable this shell has — else
+  `$ZIG_LOCAL_CACHE_DIR/inchi/zig-out`, which the cache rule below has already
+  filled and exported, or the body already stopped. `$PWD/zig-out` is gone,
+  because after the `cd` above it named this checkout. `sdk:test` and
+  `sdk:check` install nothing: `build.zig:671` hangs the smoke program's
+  compile step under the install step and never the reverse (`build.zig:662`,
+  `build.zig:675`), so a prefix there would be a flag that changes nothing.
+- **Every `zig build` names its cache.** The four bodies pass a `--cache-dir`
+  holding `$cacheDir`, which is `$ZIG_LOCAL_CACHE_DIR/inchi` — this SDK's own
+  name under the local root, the way box2d names its own — and a missing cache
+  variable is filled first, from `$XDG_CACHE_HOME`, else `$TMPDIR`, else
+  nothing: with none of the four set the body names what is missing and exits
+  non-zero **before the compiler starts**. A caller that exported
+  `ZIG_LOCAL_CACHE_DIR` or `ZIG_GLOBAL_CACHE_DIR` keeps both, exactly as
+  exported; this never unsets and never overwrites one, and it never falls back
+  to this checkout's own `.zig-cache`. The fill is in the bodies and not in
+  `enterShell` because `devenv tasks run --mode single <name>` reaches a body
+  without the shell hooks. The global cache is the root's `zig-global`, shared
+  by every SDK on the mount and so not this file's to name per SDK; no flag
+  carries it, so no flag is written twice.
+- **Every `zig build` carries a fixed `-j8` and `--summary all`**: `install` in
+  both installers, after `-Dlinkage=dynamic` in the shared one so that variant's
+  default is unchanged; `test smoke` in `sdk:test`; `check` in `sdk:check`. No
+  step name, description, default, linkage, `packages` or `outputs` entry
+  changed, and no `"$@"` was added to a body that never carried one.
+  `sdk:package-static` and `sdk:package-shared` are Nix builds, where the job
+  count is the caller's `--max-jobs`/`--cores` and `-j8` is not the flag that
+  governs it.
+
+**Source-confirmed, `PENDING-VERIFICATION`.** Every line above is read out of
+`devenv.nix` and `build.zig`; no devenv, Nix, `zig`, test or formatter was run
+to produce it, and nothing here is a receipt. The `devenv shell`, script and
+packaged-output rows in [`README.md`](README.md) §3 keep their status, and the
+driver owns the runs. §36's statements stand: the scripts live under the `sdk`
+namespace, they carry real commands, and `packages` is still tools only.
+
+## 42. Corrected the molfile status producer contract
+
+**Condition.** `MolfileStatus` preserves the whole `RetValMol2INCHI` header
+namespace, but its documentation claimed that the molfile entry point reports
+read and generation failures separately.
+
+**Source-confirmed correction.** In the pinned v1.07.5 producer,
+`MakeINCHIFromMolfileText` maps both `_IS_FATAL` and `_IS_ERROR` from reading to
+`mol2inchi_Ret_ERROR` (`inchi_dll_b.c:184-197`), and maps generation failures to
+that same code (`inchi_dll_b.c:229-232`). Both arrive as `.rejected` (2).
+`.structure_failed` (4) and `.generation_failed` (5) remain named because the
+type represents the complete header namespace, not only the reachable output
+of one producer. They do not distinguish these failure stages in this release.
+No extra API, stage inference, native change or enum removal was added.
+
+**Status: `SOURCE-CONFIRMED`, with a scoped observed control.** Corrected the
+type and arm comments in `zig/root.zig` and the contract in `README.zig.md`.
+The existing unreadable counts-line semantic test is intentionally unchanged.
+On 2026-10-04, the driver's `bg1114` after wave observed the malformed-molfile
+control return raw 2 and typed `.rejected` serialized as 2, exit 0, in
+Debug/ReleaseSafe with static/dynamic linkage. The exact Debug/static command
+was the after epoch's `prefixes/Debug-static/bin/inchi-consumer
+molfile-read-rejected`; receipts:
+`/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/after/summary.json`
+and its `Debug-static-molfile-read-rejected.json`.
+Generation-failure collapse and unreachable producer codes 4/5 remain
+source-confirmed; this control does not execute those paths. No worker gate
+ran. The boundary is also recorded in `FORK-NOTES.md` L31.
+
+## 43. Completed the nested consumer command contract
+
+**Condition.** The outer `consumer` helper did not pass its trailing arguments
+to the child build, although the child already passed its own `b.args` to the
+program. The published `-- --provider <path>` route therefore lost the provider
+at the outer hop. The helper also omitted explicit global-cache selection,
+job width and summary mode.
+
+**Source-only correction.** `runConsumer` in `build.zig` now emits `-j8`,
+two-token `--summary all` and two-token `--global-cache-dir` using the inherited
+global cache path. The existing two-token local cache and its `consumer`
+subdirectory stay unchanged. Last, it emits `--` followed by the caller's
+`b.args` verbatim. The target query, CPU, optimize, linkage, runtime, resolved
+system mode in both directions, executor switches, `--libc-runtimes` and
+`hostCanExecute` run/install policy remain unchanged. No new SDK option,
+consumer default, signature or permanent forwarding test was added.
+
+**Status: `PENDING-VERIFICATION`.** The build owner supplied the source-only
+change record; this entry integrates it with the corrected argument description
+in `README.zig.md` and the boundary in `FORK-NOTES.md` L32. No compiler, build,
+test or formatter ran for this change. The driver owns native and explicitly
+named target consumers, linked/shared/runtime modes, system mode, enabled
+executors and the actual provider argument route.
+
+## 44. Preserved native signed key-verdict codes
+
+**Condition.** `KeyVerdict` used `enum(c_int)` but left its named values
+implicit. `RetValCheckINCHIKeyv` instead defines 0, -1, 1, 2 and 3
+(`inchi_api.h:1062-1066`). Symbolic comparisons hid the difference:
+`checkKey` selected `.non_standard`, but serializing that returned value
+produced 1, the native code for invalid length.
+
+**Observed before, driver report.** The parent's `bg1082` before wave covered
+Debug and ReleaseSafe with static and dynamic linkage, producing 24 rows:
+16 expected numeric mismatches for non-standard and invalid verdicts, and
+8 passing standard-key or malformed-molfile rows. The Debug/static non-standard
+sample returned native -1, tag `non_standard`, and serialized 1 instead of -1,
+ending in `TypedSerializationMismatch`. This establishes the prior defect;
+it does not establish a result after this correction.
+
+Before receipts:
+`/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/before/summary.json`
+and the exact non-standard sample
+`/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/before/Debug-static-nonstandard.json`.
+
+**Fix.** Give every named `KeyVerdict` its explicit native signed code:
+`standard = 0`, `non_standard = -1`, `invalid_length = 1`,
+`invalid_layout = 2`, `invalid_version = 3`. Keep `c_int`, the unnamed `_`
+channel and the existing `checkKey` mapping. Extend the existing semantic key
+tests to serialize actual returned verdicts for a generated non-standard key,
+the published water key and malformed length/layout/version inputs. No test
+merely compares enum declarations to copied constants or raw forwarding calls.
+All existing symbolic callers remain valid; no compatibility alias or extra
+API was added.
+
+**Status: `OBSERVED`, scoped semantic after probe.** On 2026-10-04, the parent's
+`bg1114` after wave reported all 24 rows passing across Debug/ReleaseSafe,
+static/dynamic linkage and the six semantic cases. All returned native and
+typed-serialized key codes match 0, -1, 1, 2 and 3; the malformed-molfile
+control remains `.rejected` (2). The exact Debug/static non-standard command,
+the after epoch's `prefixes/Debug-static/bin/inchi-consumer nonstandard`,
+exited 0 with raw -1 and serialized -1. Receipts:
+`/home/tmp2/gertullj/scratch/foundation-libs/text-contract-probes/inchi/epochs/key-verdict-native-codes/after/summary.json`
+and its `Debug-static-nonstandard.json`. This does not establish the current
+full SDK suite, 53-target matrix, runtime loader or new nested-helper/prefix
+proof. No worker gate ran; API and tests remain frozen.
+`README.zig.md` records the numeric contract; `FORK-NOTES.md` L33 records scope.
+
+## 45. Relayed a non-default prefix to the nested consumer
+
+**Condition.** The nested consumer changes directory before it configures its
+own install step, so an outer install prefix must be relayed in the build
+runner's option channel, not as a program argument.
+
+**Source-only correction.** The build owner updated `runConsumer` to emit
+two-token `--prefix` with the actual `b.install_prefix` when it differs from
+the outer build's default `zig-out`. Relative prefixes are made absolute
+against `b.graph.cache.cwd` before the child runs in `consumer/`. The option
+follows the global-cache block and precedes `--` plus `b.args`. No prefix is
+emitted for the default. All target, CPU, SDK, executor, cache, job and summary
+choices and the `hostCanExecute` run/install policy remain unchanged.
+
+**Status: `PENDING-VERIFICATION`.** Integrated the prefix build owner's
+source-only record into `README.zig.md` and `FORK-NOTES.md` L32. No build,
+compiler, test or formatter was run by this worker; the driver owns observing
+the nested installation under absolute and relative non-default prefixes.
+
+## 46. The system mode's resolved metadata is stated, and four source-bound gates are recorded
+
+**Condition.** The records named `-fsys=inchi` as a mode and nothing about how
+it resolves an installed library, while four driver runs had already produced
+current numbers that no entry carried.
+
+**What the graph resolves, `SOURCE-CONFIRMED` from `build.zig` and verified by
+no run.** Which installed flavour: an omitted `-Dlinkage` means the
+distribution's shared object, so `system_linkage` defaults to `.dynamic`, and an
+explicit `-Dlinkage` names which installed flavour `-l` asks for
+(`build.zig:514-521`); the field is kept apart from `linkage`, because in this
+mode the graph builds no artifact and `linkage` describes nothing. Which
+metadata: the translation step and the published module ask pkg-config for the
+installed tree's own `inchi.pc` with the same options — `.use_pkg_config = .yes`
+and that `preferred_link_mode` (`build.zig:963-967`, `:1052-1055`) — so the
+header the declarations came from and the `-linchi` they bind to are one answer.
+`.yes` is the deliberate choice here and `.force` is not: the fallback is the
+bare `-linchi` the file itself publishes, and this mode degrades to a name
+rather than stopping. Which executor: the nested `consumer` build inherits the
+switches this build resolved — `-fdarling`, `-fqemu`, `-frosetta`, `-fwasmtime`,
+`-fwine` — and `--libc-runtimes` (`build.zig:1473-1483`), and the `-fsys=inchi`
+or `-fno-sys=inchi` spelling is forwarded verbatim (`build.zig:1465-1471`), so
+the nested build runs under the executor `hostCanExecute` decided with instead
+of resolving its own. **No run of `-fsys=inchi` has happened in this workspace,
+so no result is claimed for the mode.**
+
+**Four source-bound gates, each read out of a receipt the driver wrote.**
+
+* `zig build check` over the six declared compile targets, 2026-10-05: exit 0,
+  `Build Summary: 31/31 steps succeeded`, no failing step, all six targets seen.
+  Label `baseline-inchi-check`, baseline run `20261005T014547Z-797a73f2`. Compile
+  and link only.
+* `cross-test --jobs 8 --build-jobs 8` over the published 53-platform table,
+  2026-10-04: run `20261004T221720228710Z-45046`, receipt
+  `inchi-53-target-8.json`, source stamp `bc5a479718…` identical before and
+  after, exit 1. **12 pass, 33 build-only, 0 build failures, 8 run failures**, 20
+  cells executed at 22 tests each. The eight failures are the big-endian family
+  — `aarch64_be-linux`, `armeb-linux`, `mips-linux`, `mips64-linux`,
+  `powerpc-linux`, `powerpc64-linux`, `s390x-linux`, `thumbeb-linux` — and in
+  each one test of 22 fails: `tests.test.the molfile route produces PubChem's
+  published identifier and key` returns `error.MissingIdentifier` at
+  `tests.zig:734` with `molfile: status rejected, message` and an empty message,
+  under `qemu-mips` and its siblings. The other 14 tests pass in every one of
+  them. That is one upstream molfile route under foreign big-endian emulation.
+* Native final wave, `native-final-evidence/20261004T233628757747Z-69351`: eight
+  cells, both linkages × four modes, `zig build test smoke install
+  -Druntime=false`, eight `exit 0`, each `30/30 steps succeeded` and `22/22 tests
+  passed`.
+* Own-loaded wave, `loaded-final-evidence/20261004T232823091897Z-23133`: the same
+  eight shapes under `-Druntime=true`, eight `pass`, each `31/31 steps succeeded`
+  and `22/22 tests passed`, every cell loading a provider of kind `own` — the
+  `libinchi.so.1.7.5` the native wave installed — named by absolute path through
+  `INCHI_TEST_PROVIDER`, with nothing read from the ambient environment and no
+  fallback.
+
+**What these runs retire and what they do not.** The file as it ships declares
+22 tests, and these runs executed it; the older `16/16` rows stay history for
+the tree they were taken on. They also settle the two std spellings
+`Step.Compile.setVersionScript` and `Build.installFile` that earlier rows carried
+as unconfirmed, because sixteen configurations used them. Each run holds one
+source stamp, so every build-graph, header, helper and normalisation edit made
+afterwards — including entries 42 to 45 — is outside all four. The
+whole-record `sha256sum -c UPSTREAM.sha256`, the final filtered package round,
+`zig build -fsys=inchi`, the Nix derivations, the devenv shell, a
+foreign-compatible provider and the loader's failure paths keep no receipt, and
+this entry claims none.
+
+**Files.** `README.md`, `README.zig.md`, `CHANGELOG.md`, `FORK-NOTES.md`. No
+upstream C byte, header, fixture, data file or licence file changed, and no
+algorithm, declaration, option, default, step or target changed. No build, test,
+matrix, Nix, devenv, formatter or git command was run for this entry.

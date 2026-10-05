@@ -40,11 +40,15 @@ Where each of those comes from, read out of the carried tree:
   the InChI Trust (`inchi_api.h:29-37`); `LICENSE:3` says `Copyright (c) 2024
   InChI Project`. Both are upstream's bytes and both travel.
 * Upstream describes its own API in `inchi_api.h` and `ixa.h`. The header
-  declares 35 public functions in three blocks: `inchi_api.h:835-1146` is the
-  `Get*`, `Free*` and `Check*` surface, `inchi_api.h:1311-1393` is the
-  `INCHIGEN_*` generator handle API, and `inchi_api.h:1402` is
-  `MakeINCHIFromMolfileText`. `ixa.h` adds the IXA handle API, 355 `IXA_`
-  declarations of its own.
+  declares 36 exported public functions in three blocks: `inchi_api.h:835-1146`
+  is the `Get*`, `Free*` and `Check*` surface, `inchi_api.h:1311-1393` is the
+  `INCHIGEN_*` and `STDINCHIGEN_*` generator handle families, and
+  `inchi_api.h:1402` is `MakeINCHIFromMolfileText`. Those 36 are the 36
+  non-`IXA_` globals of `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`.
+* `ixa.h` adds **91 exported `IXA_` declarations**, the other 91 globals of that
+  same version script, which exports 127 in all. `ixa.h` is 686 lines and 355 of
+  them mention `IXA_`, across 199 distinct `IXA_` tokens once the `__IXA_H__`
+  include guard is excluded, so 355 counts lines, not declarations.
 
 **Tag signature: not verified here.** No signing key was consulted while this
 file was written and no git command was run at all, so nothing here is an
@@ -53,9 +57,10 @@ digest below as the provenance anchors, not as a signature check.
 
 ## The licences in this tree, and which file each covers
 
-The InChI library is MIT. Three files inside the shipped set are not, or are
-not unconditionally, and saying "the whole package is MIT" would be wrong in
-three different ways:
+The InChI library is MIT — **but not bare MIT**, and saying "the whole package
+is MIT" would be wrong in four different ways. Three are per-file exceptions
+listed below. The fourth is not a file: it is a condition that attaches to the
+MIT grant itself and is stated below those three.
 
 | File | Its own terms | What it is |
 |---|---|---|
@@ -67,6 +72,35 @@ three different ways:
 `Copyright (C) Brainspark B.V., see files sha2.c, sha2.h`, which is a third
 attribution for the same two files. That inconsistency is upstream's and is
 recorded here rather than resolved; nothing in this fork edits either file.
+
+**The fourth: the grant carries an attribution and banner condition.** The MIT
+permission is not the whole of what upstream asks. Two obligations ride on top
+of it in upstream's own bytes, and both are preserved here rather than
+summarised away:
+
+* **The attribution notice travels.** `LICENSE:12-13` is the standard MIT
+  notice clause, and upstream additionally repeats the project's own
+  acknowledgement block — IUPAC, the InChI Trust, NIST, the external
+  contributors named in `External-contributors`, and `info@inchi-trust.org` —
+  in the header of every notice-bearing source file, including both public
+  headers this package installs (`inchi_api.h:29-37`, `ixa.h:29-37`). Note that
+  `External-contributors` is named by that notice and lives outside the shipped
+  directories, so a dependent who fetches this package does not receive it.
+* **The project banner identifies the software.** Upstream identifies the
+  software version in the identifier itself (`1S` in every InChI, from
+  `mode.h:258`'s `INCHI_VERSION "1"`) and in the usage banner
+  `HelpCommandLineParms` prints from
+  `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c`, with the same identification in the
+  `INCHIGEN_*` generator status strings. A consumer that ships identifiers
+  derived from this library keeps printing that identification and keeps
+  declaring the version the identifiers came from. This is why the authorised
+  `ichiparm.c` patch substitutes the **pinned source tag** for `__DATE__` and
+  `__TIME__` rather than deleting the banner: reproducibility and this
+  condition agree, and deleting it would not.
+
+The condition is quoted, with its SPDX identifier, in
+[`FORK-LICENSE.md`](FORK-LICENSE.md), which applies the same two obligations to
+the files this fork writes.
 
 Of the 105 files in the two shipped directories, 100 carry the MIT notice.
 The five that do not are `sha2.c`, `sha2.h`, `tbb/tbbmalloc_proxy.h`,
@@ -83,13 +117,23 @@ holds a SHA-256 receipt for the deterministic `git archive` stream of the
 55382c70314a01a9d2f3a18f0833a44c352d7332884f614f28cbb1d40c17d5f6  -
 ```
 
-The trailing `-` is `sha256sum`'s name for standard input: the digest is of
-the archive stream as it was piped past the hasher, not of any file in this
+The trailing `-` is `sha256sum`'s name for standard input: the digest is of the
+archive stream as it was piped past the hasher, not of any file in this
 repository, and not of the subset this package ships. It is recorded here so a
 later re-fetch can be compared against the same bytes. It cannot be checked
-against [`UPSTREAM.sha256`](UPSTREAM.sha256) directly — that file holds 109
+against [`UPSTREAM.sha256`](UPSTREAM.sha256) directly — that file holds 110
 records, not the whole tree — and this fork does not pretend the two are
 comparable.
+
+**The `README.md` record is a `README.upstream.md` record.** Upstream's project
+README sat at the repository root under that name until this fork gave the root
+name to its own README; the bytes did not move and were not reworded, so the
+digest `90c885dabbed6b320728d8cc84fe30f0d323116213c77b6231950c90b80ba824` is
+the same value the record carried before, now naming the path the file is read
+from. Every receipt quoted below that shows `README.md: OK` is therefore a
+receipt about those same bytes under their old name. The new fork `README.md` is
+this fork's own document and is deliberately **not** in the record — it is a
+file this fork writes, like every other one in the absent list.
 
 The companion record `local://foundation-expansion-sources.json` names the same
 repository, ref and commit, and records the licence as `MIT`. That is the
@@ -268,8 +312,9 @@ and written out in [The two patched source files](#the-two-patched-source-files)
 | `INCHI-1-SRC/INCHI_BASE/src` | 86 files: the canonicalisation and InChIKey core, the molfile readers and writers, the bundled stb_sprintf 1.10, the SHA-256 implementation, and the two public headers `inchi_api.h` and `ixa.h` that the build installs |
 | `INCHI-1-SRC/INCHI_API/libinchi/src` | 20 entries, 19 files: the `Get*`/`Free*`/`Check*` API units, the six IXA units, their headers, and upstream's own `CMakeLists.txt` for the target |
 | `LICENSE` | the MIT License text, verbatim |
-| `README.md` | upstream's project README, verbatim |
+| `README.upstream.md` | upstream's project README, verbatim, under the path this package preserves it at. Upstream keeps it at the repository root as `README.md`; the fork's own document occupies that name, so upstream's bytes are carried unchanged beside it and `UPSTREAM.sha256` names this path. The digest is the same one the record held while the file was called `README.md` |
 | `INCHI-1-SRC/INCHI_API/tbb/LICENSE` | upstream's own full Apache-2.0 text, shipped so the Intel TBB header that travels inside `INCHI-1-SRC/INCHI_BASE/src/tbb/` travels with its terms, and hashed in `UPSTREAM.sha256` like every other upstream file the package ships |
+| `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` | upstream's own ELF version script, verbatim: the exported-symbol list for a shared `libinchi`, naming the public API and nothing internal. Shipped because a shared build passes it to the linker, and hashed in `UPSTREAM.sha256` like every other upstream file the package ships. Read only on ELF targets, and only under `-Dlinkage=dynamic` |
 
 `.gitignore` is upstream's file too, and it is in this repository but not in
 `.paths`; the fork appends to it, so it is deliberately **not** in the
@@ -308,11 +353,11 @@ carries:
 110611 upstream bytes became 111263 current bytes. The earlier 111277-byte
 patch had digest `54797698e636e2d556520fa1d7ccb995b10d9acbf3c58015cdd2f427e6b1705c`;
 only three existing disclosure-comment lines were clarified since it, with
-no noncomment byte or source-line count changed. Of the 109 lines, **108 are upstream
-records**: 106 byte-identical to the pin, and `ichiparm.c` plus `ichicano.c` the
+no noncomment byte or source-line count changed. Of the 110 lines, **109 are upstream
+records**: 107 byte-identical to the pin, and `ichiparm.c` plus `ichicano.c` the
 two exceptions once the second patch is counted. The
-109th line, `testdata/pubchem_known_answers.tsv`, is not upstream's at all, so
-"every other one of the 109 recorded files is byte-identical to the pin" would
+110th line, `testdata/pubchem_known_answers.tsv`, is not upstream's at all, so
+"every other one of the 110 recorded files is byte-identical to the pin" would
 be false by one line. The native tree is these two disclosed single-file
 exceptions and not a pristine copy.
 
@@ -607,7 +652,7 @@ package does not receive them:
 | Path | What it is |
 |---|---|
 | `INCHI-1-SRC/INCHI_EXE/`, `INCHI-1-SRC/INCHI_BASE/redundant/`, `INCHI-1-SRC/INCHI_API/demos/`, `INCHI-1-SRC/INCHI_API/bin*/`, `INCHI-1-SRC/INCHI_API/tbb/` | the `inchi-1` executable, its prebuilt binaries, the demo programs, superseded sources and the TBB allocator wrapper upstream's own sources include under a Windows-only flag. **One file of the last directory is now shipped** — `INCHI-1-SRC/INCHI_API/tbb/LICENSE`, listed above; the wrapper itself, its `Windows/` subdirectory and `scalable_allocator.h` are not in `.paths` |
-| `INCHI-1-SRC/INCHI_API/libinchi/gcc/`, `.../vc14/` | upstream's gcc makefiles, its version script and its Visual Studio project; the makefile is the source of the `-std=c11`, `-fno-strict-aliasing`, `-DTARGET_API_LIB -DCOMPILE_ANSI_ONLY` and `libinchi` spellings this build quotes |
+| `INCHI-1-SRC/INCHI_API/libinchi/gcc/`, `.../vc14/` | upstream's gcc makefiles and its Visual Studio project; the makefile is the source of the `-std=c11`, `-fno-strict-aliasing`, `-DTARGET_API_LIB -DCOMPILE_ANSI_ONLY` and `libinchi` spellings this build quotes. **One file of the first directory is now shipped** — `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`, upstream's own ELF version script, listed above; the makefiles beside it still are not, because this build reads its flags from `build.zig` rather than from them |
 | `INCHI-1-SRC/readme.txt`, `cmake_build_tool.sh`, `cmake_build_tool.bat` | upstream's notes and its own CMake driver scripts |
 | `INCHI-1-DOC/`, `INCHI-1-TEST/` | the manuals, release notes, FAQ and the Python/gtest distribution including the html report generator |
 | `CMakeLists.txt`, `Doxyfile` at the repository root | upstream's top-level build and documentation configuration |
@@ -617,11 +662,54 @@ Upstream's own CI is left exactly as it arrived and is not retargeted at this
 fork's infrastructure. This fork's workflow is `.github/workflows/verify.yml`,
 a new file, which is also not in `.paths`.
 
+## Portable packaging
+
+`package.nix`, `flake.nix`, `devenv.nix`, `devenv.yaml` and `.envrc` are
+fork-authored, not upstream files. They are in `.paths` so a dependent
+receives the same derivation the tree was measured with. They build upstream's
+own `libinchi` from this repository's own C sources through this repository's
+own `build.zig` — the same 60 translation units, the same configuration, the
+same facade. There is no `pkgs.inchi` to substitute, no CMake or autotools
+invocation, no build-time download and no host path in any of them.
+
+* `package.nix` is an ordinary uncurried function over `lib`, `stdenv`, `zig`
+  and an optional `linkage` defaulting to `static`, returning **one**
+  derivation. Both entry points call it the same way:
+  `pkgs.callPackage ./package.nix { zig = pkgs.zig_0_16; inherit linkage; }`.
+  It owns nothing but the invocation: the source list, the C flags, the header
+  configuration and the installation of the library, headers, `.pc` and
+  licence material all belong to `build.zig`, and one path has one writer.
+* The variants are made by the entry points, not inside `package.nix`:
+  `flake.nix` exposes `packages.<system>.static` and `.shared` (mapping to
+  `linkage = "static"` and `"dynamic"`), with `.default` preserving the SDK's
+  static policy. `devenv.nix` exposes the same two lazily as
+  `outputs.static` and `outputs.shared`, built with
+  `devenv build outputs.static` / `outputs.shared`.
+* `devenv.nix`'s `packages` carries **tools, not this SDK**: `zig_0_16` and the
+  C toolchain `addTranslateC` and the libc/libm link need. The derivations are
+  lazy, so entering the shell does not build the library.
+* The installed closure is the same for both linkages: the library, both public
+  headers, `lib/pkgconfig/inchi.pc`, and the licence material under
+  `$out/share/doc/inchi/`. InChI installs no tools and carries no runtime data
+  files, so there is no `$out/bin` and no data tree.
+* `flake.lock` **is** written here: it is a committed file pinning
+  NixOS/nixpkgs at the same revision `flake.nix:15` names, and it is in
+  `build.zig.zon` `.paths`, so a fetched package carries the pin. It has no
+  `UPSTREAM.sha256` record because those records cover upstream's files, not
+  fork-authored metadata.
+* There is **no** `devenv.lock`: none exists in this repository, none is
+  invented to match the flake's, and `devenv.yaml` pins its own input by
+  revision, so the shell resolves without one.
+* Nothing here promises a wholly static executable or claims hermeticity.
+  `libinchi` links libc and libm, so a shared consumer needs a dynamic loader
+  and a static archive still needs its libc at run time.
+
 ## Integrity
 
-`UPSTREAM.sha256` holds **109** records: the SHA-256 of every upstream file the
-package ships (106 files — the 105 across the two source directories, plus
-upstream's own `INCHI-1-SRC/INCHI_API/tbb/LICENSE`), the upstream MIT text,
+`UPSTREAM.sha256` holds **110** records: the SHA-256 of every upstream file the
+package ships (107 files — the 105 across the two source directories, plus
+upstream's own `INCHI-1-SRC/INCHI_API/tbb/LICENSE` and its own
+`INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map`), the upstream MIT text,
 upstream's README, and the one independent fixture the tests embed. One
 `<hex>  <path>` line each, in `sha256sum` format. Check it with:
 
@@ -707,7 +795,7 @@ was also materialised before `cross-test.profile.sh` entered `.paths`, so the
 fetched package they describe is not the package this tree now publishes. The
 `#`-prefixed header of the file explains, per path, why anything is excluded.
 
-**The record's own header agrees with its lines.** It states 109 records, names
+**The record's own header agrees with its lines.** It states 110 records, names
 `INCHI-1-SRC/INCHI_API/tbb/LICENSE` as the one upstream file added for the
 Apache-2.0 terms with a line saying why, and excepts that path from the
 "deliberately absent" list it shares with `INCHI-1-DOC/`, `INCHI-1-TEST/` and the
@@ -725,7 +813,12 @@ were written on
 2026-10-01, and every one of them was then re-derived from the written file
 with the same method and compared against it: 108 re-derived, 0 mismatches, 108
 distinct paths. The 109th line, the Apache-2.0 text, was added afterwards and is
-covered by the `sha256sum -c` receipt named above. The tree walk also reported
+covered by the `sha256sum -c` receipt named above. The 110th, the ELF version
+script, was added when shared-library delivery landed; its digest
+`9c90980efa8c3310b624b334dc9e5c384e83d9790214746c80fc59f7fc4b16c2` is read out
+of the file in this working tree and has **no** `sha256sum -c` receipt yet, so
+the whole-record replay the driver owes now covers it for the first time.
+The tree walk that produced the record also reported
 no symlinks and no non-regular entries under the two hashed roots — 105 regular
 files and 2 directories — so every record is the digest of that file's own
 bytes. The `ichiparm.c` and `ichicano.c` records are the two lines
@@ -737,7 +830,7 @@ written line, and it is not a substitute for the whole-record check above.
 
 **What the record establishes.** If it validates, the bytes the build compiles,
 the licence texts a dependent receives and the fixture the tests read are the
-bytes this record pins, and any later edit to one of those 109 files fails the
+bytes this record pins, and any later edit to one of those 110 files fails the
 check loudly.
 
 **What it does not establish.** It is not a signature, not a Git object id, and
@@ -754,9 +847,9 @@ git -C <clone> archive --format=tar 11a87982bb518f57ac013f0b258c283655e1ea1d | s
 
 The output must read
 `55382c70314a01a9d2f3a18f0833a44c352d7332884f614f28cbb1d40c17d5f6  -`,
-and `sha256sum -c UPSTREAM.sha256` must then report 109 records and no
+and `sha256sum -c UPSTREAM.sha256` must then report 110 records and no
 failures. Note what that pair of commands does **not** say: the archive digest
-covers the whole upstream tree and the 109 records cover a subset of the files
+covers the whole upstream tree and the 110 records cover a subset of the files
 upstream ships, so the two numbers are expected to differ. What a re-sync
 should assert is that every file the record names still hashes to what it says,
 which is the second command.
@@ -777,9 +870,10 @@ immediately above and is not changed by any receipt.
    `INCHI-1-SRC/INCHI_BASE/src/bcf_s.h`'s `CURRENT_VER`; that string, not the
    tag spelling, is the version.
 2. Replace the upstream files in place: the two `src` directories, `LICENSE`
-   and `README.md`. Do not hand-patch upstream source to make a build problem
-   go away. The two exceptions are recorded, measured against upstream's own
-   digests and written out in
+   and the preserved upstream README (`README.upstream.md`, which holds
+   upstream's `README.md` bytes verbatim). Do not hand-patch upstream source to
+   make a build problem go away. The two exceptions are recorded, measured
+   against upstream's own digests and written out in
    [The two patched source files](#the-two-patched-source-files); a re-sync
    either carries them forward deliberately — re-checking both contexts against
    the new release, because both sets of line numbers move — or drops them and
@@ -800,8 +894,11 @@ immediately above and is not changed by any receipt.
    file a `.paths` entry adds needs a record line, or the record stops covering
    what the package ships. `INCHI-1-SRC/INCHI_API/tbb/LICENSE` is the case in
    point — added to `.paths` to close the Apache-2.0 gap, hashed as the 109th
-   line afterwards, with its own header line explaining why it is there. Update
-   the header's count and its exclusion list in the same change: a digest list
+   line afterwards, with its own header line explaining why it is there.
+   `INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map` is now the same case in the
+   other direction: promoted out of "carried but not shipped" because the shared
+   build reads it, and hashed as the 110th line with a header line saying that.
+   Update the header's count and its exclusion list in the same change: a digest list
    whose prose under-counts itself is the one part of a record a reader trusts.
 6. Re-check both patches against the new release before carrying either forward:
    `INCHI-1-SRC/INCHI_BASE/src/ichicano.c` and the headers it needs, on each
@@ -815,7 +912,13 @@ immediately above and is not changed by any receipt.
 * [`NOTICE.md`](NOTICE.md) — attribution, the licence split, the MIT
   obligations that apply, every file this fork adds or edits, and the
   provenance of the independent fixture.
-* [`README.zig.md`](README.zig.md) — how to build, import and call the package.
+* [`FORK-LICENSE.md`](FORK-LICENSE.md) — the grant for this fork's own files,
+  its SPDX identifier and the owner authorization behind it.
+* [`README.md`](README.md) — current source and build deviations, the current
+  build/run/test matrix, and how to consume the package.
+* [`README.zig.md`](README.zig.md) — the Zig interface: build, import and call.
+* [`package.nix`](package.nix) — the one source-only derivation `flake.nix` and
+  `devenv.nix` both consume.
 * [`CHANGELOG.md`](CHANGELOG.md) — numbered fork-only divergences.
 * [`FORK-NOTES.md`](FORK-NOTES.md) — the problems met while doing this, and
   what was decided.

@@ -4,7 +4,7 @@
 # 11a87982bb518f57ac013f0b258c283655e1ea1d,
 # https://github.com/IUPAC/InChI.git).
 #
-# 109 records:
+# 110 records:
 #
 #   105 files   the two upstream-owned directories of build.zig.zon `.paths`,
 #               INCHI-1-SRC/INCHI_BASE/src (86 files) and
@@ -73,7 +73,19 @@
 #               compiles.
 #
 #     1 file    LICENSE, the MIT text, verbatim.
-#     1 file    README.md, upstream's own project README, verbatim.
+#     1 file    README.upstream.md, upstream's own project README, verbatim.
+#               Upstream's README lives at the repository root, where a Zig
+#               package needs its own README.md; the upstream bytes are
+#               preserved under this name and the record names this path. The
+#               digest below is unchanged by the move, because the bytes are.
+#     1 file    INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map, upstream's own
+#               ELF version script: the exported-symbol list for a shared
+#               libinchi, naming the public API and nothing else. It moved from
+#               "carried for provenance" into `.paths` when this fork began
+#               producing a real shared library, because a shared build passes
+#               it to the linker and a build cannot read a file the package
+#               does not ship. It is upstream's file, unmodified, and it is
+#               read only on ELF targets and only when -Dlinkage=dynamic.
 #     1 file    INCHI-1-SRC/INCHI_API/tbb/LICENSE, upstream's full Apache-2.0
 #               terms for the uncompiled proxy header shipped with the source.
 #     1 file    testdata/pubchem_known_answers.tsv, the independent known
@@ -87,14 +99,27 @@
 # Deliberately absent, each for a stated reason:
 #   build.zig, build.zig.zon, translate.h, zig/, tests.zig, smoke.zig,
 #   cross-test.profile.sh, consumer/ and UPSTREAM.md, NOTICE.md, CHANGELOG.md,
-#   FORK-NOTES.md, README.zig.md -- this fork's own files, listed in NOTICE.md.
+#   FORK-NOTES.md, FORK-LICENSE.md, README.md, README.zig.md -- this fork's own
+#   files, listed in NOTICE.md. README.md is this fork's own document; upstream's
+#   README is the record immediately above, under its preserved path.
+#   package.nix, flake.nix, devenv.nix, devenv.yaml, .envrc and flake.lock --
+#   this fork's own portable-packaging files, listed in NOTICE.md. flake.lock
+#   is a real committed file here and build.zig.zon lists it in .paths, but the
+#   records above cover upstream's files only, so no fork-authored metadata is
+#   hashed: it pins this fork's own nixpkgs input, not upstream's bytes.
+#   devenv.lock does not exist in this repository and none is invented to fill
+#   the slot.
 #   .gitignore -- upstream's ignore rules are kept verbatim and this fork
 #   appends its own Zig entries below them, so the file is not byte-identical
 #   to upstream's.
 #   .github/, .devcontainer/, .editorconfig, .gitattributes, .dockerignore,
 #   Doxyfile, INCHI-1-DOC/, INCHI-1-TEST/ and the whole of INCHI-1-SRC except
-#   the two src directories and INCHI-1-SRC/INCHI_API/tbb/LICENSE -- carried
-#   in this repository for provenance and re-sync diffs, and not in `.paths`.
+#   the two src directories, INCHI-1-SRC/INCHI_API/tbb/LICENSE and the one file
+#   INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map -- carried in this
+#   repository for provenance and re-sync diffs, and not in `.paths`. The
+#   version script is the exception that stopped being an exception; the
+#   makefiles beside it still are, because the build reads its flags from
+#   build.zig rather than from them.
 #   UPSTREAM.sha256 itself -- a record cannot contain its own digest.
 #
 # These are the bytes in this working tree, hashed as a raw byte read (Bun
@@ -245,6 +270,7 @@ f14d067a402ff02e25d5eecc9ed1caa56594e7b4bbaf3a9d8b7b389d2c5cb65e  INCHI-1-SRC/IN
 bf8ca94d448490744cc452e2877a061c79de5352b0b27c38bd45c2fa2b24e4c8  INCHI-1-SRC/INCHI_BASE/src/util.c
 bcf6e00dd811609d7392e5f0fbd7b03ca722cb4c447bd4b5ee5d271e680235bf  INCHI-1-SRC/INCHI_BASE/src/util.h
 86ed3c36c70eb57826374cc14b199cae09fec201d07cd369a50fcaa9905244af  LICENSE
-90c885dabbed6b320728d8cc84fe30f0d323116213c77b6231950c90b80ba824  README.md
+90c885dabbed6b320728d8cc84fe30f0d323116213c77b6231950c90b80ba824  README.upstream.md
 e3fc60daa14a6079e7f6291c86175ee0e1ffd961c2c41b90d59b7c5bb7e5f6ed  testdata/pubchem_known_answers.tsv
 c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4  INCHI-1-SRC/INCHI_API/tbb/LICENSE
+9c90980efa8c3310b624b334dc9e5c384e83d9790214746c80fc59f7fc4b16c2  INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map
