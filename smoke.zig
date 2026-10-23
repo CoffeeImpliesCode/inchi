@@ -1,46 +1,25 @@
 //! SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
 //! See FORK-LICENSE.md for the full grant and the owner authorization behind it.
-//
-//! A runnable, deterministic demonstration of the InChI facade.
-//!
-//! `zig build smoke` runs this. There is no clock, no random seed and no input,
-//! so the same lines come out every time.
-//!
-//! Every identifier below is an expected answer, not a value this program
-//! computed for comparison: they are PubChem's published standard InChI strings
-//! and InChIKeys, the same facts `tests.zig` reads out of
-//! `testdata/pubchem_known_answers.tsv`. The molecules are built here from
-//! element symbols and implicit hydrogen counts, so a mismatch means the
-//! library disagreed with PubChem, not with itself.
-//!
-//! The same source builds against a linked package and against a
-//! runtime-loaded one. `inchi.runtime_loaded` is a comptime constant, so the
-//! difference is one branch and no duplicated program: in the runtime-loaded
-//! build the provider is named on the command line (`--provider <path>`) or in
-//! `INCHI_TEST_PROVIDER`, loaded once, and the same published answers follow.
+//! Deterministic demonstration of facade operations against PubChem answers.
+//! `zig build smoke` supports linked and runtime-loaded builds; runtime mode
+//! requires an explicit provider.
 
 const std = @import("std");
 const inchi = @import("inchi");
 const molecules = @import("zig/molecules.zig");
 
-/// PubChem CID 962.
 const water_inchi = "InChI=1S/H2O/h1H2";
 const water_key = "XLYOFNOQVPJJNP-UHFFFAOYSA-N";
-/// PubChem CID 297.
 const methane_inchi = "InChI=1S/CH4/h1H4";
 const methane_key = "VNWKTOKETHGBQD-UHFFFAOYSA-N";
-/// PubChem CID 702.
 const ethanol_inchi = "InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3";
 const ethanol_key = "LFQSCWFLJHTTHZ-UHFFFAOYSA-N";
-/// PubChem CID 241.
 const benzene_inchi = "InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H";
 const benzene_key = "UHOVQNZJYSORNB-UHFFFAOYSA-N";
-/// PubChem CID 24602: the same oxygen as water, both hydrogens deuterium.
 const heavy_water_inchi = "InChI=1S/H2O/h1H2/i/hD2";
 const heavy_water_key = "XLYOFNOQVPJJNP-ZSJDYOACSA-N";
 
-/// A V2000 CTfile for ethanol, spelled out here so that every byte of the input
-/// is next to the published identifier it has to produce.
+/// V2000 ethanol input for the published identifier.
 const ethanol_molfile =
     "ethanol\n" ++
     "  pubchem known answer\n" ++
@@ -54,7 +33,6 @@ const ethanol_molfile =
     "M  END\n" ++
     "$$$$\n";
 
-/// A runtime-loading build has no provider until one is named.
 const ConfigurationError = error{NoProviderConfigured};
 
 pub fn main(init: std.process.Init) !void {
@@ -64,10 +42,7 @@ pub fn main(init: std.process.Init) !void {
     var stdout = std.Io.File.stdout().writerStreaming(io, &buffer);
     const w = &stdout.interface;
 
-    // In a runtime-loading build nothing below can run until a provider is
-    // loaded, and the load is the one explicit step the contract asks for. In a
-    // linked build this is a no-op at comptime and the module is already
-    // usable.
+    // Runtime-loaded builds load the explicitly selected provider before use.
     if (comptime inchi.runtime_loaded) {
         const provider = try providerRequest(init);
         try inchi.load(.{ .path = provider });
@@ -80,20 +55,14 @@ pub fn main(init: std.process.Init) !void {
 
     var scratch: molecules.Scratch = .{};
 
-    // One oxygen with two implicit hydrogens.
+    // Deuterium adds an isotope layer and changes the key's second block.
     try check(w, "water", try molecules.water(&scratch), water_inchi, water_key);
-    // One carbon with four implicit hydrogens.
     try check(w, "methane", try molecules.methane(&scratch), methane_inchi, methane_key);
-    // Three atoms: CH3-CH2-OH, hydrogens implicit, no stereo.
     try check(w, "ethanol", try molecules.ethanol(&scratch), ethanol_inchi, ethanol_key);
-    // A six-membered Kekule ring.
     try check(w, "benzene", try molecules.benzene(&scratch), benzene_inchi, benzene_key);
-    // The same oxygen as water, both hydrogens deuterium in num_iso_H[2]: the
-    // isotope layer appears and the key's second block changes with it.
     try check(w, "heavy water", try molecules.heavyWater(&scratch), heavy_water_inchi, heavy_water_key);
 
-    // The same molecule numbered from the other end. A standard InChI is
-    // canonical, so this has to come out identical.
+    // Standard InChI canonicalizes equivalent atom numberings.
     var first = try inchi.fromMolecule.standard(try molecules.ethanol(&scratch));
     defer first.deinit();
     var second = try inchi.fromMolecule.standard(try molecules.ethanolRenumbered(&scratch));
@@ -106,9 +75,7 @@ pub fn main(init: std.process.Init) !void {
         return error.SmokeCheckFailed;
     }
 
-    // The identifier to structure direction: upstream rebuilds water's
-    // published identifier, and the rebuilt atoms regenerate it with no copy
-    // anywhere in between.
+    // Rebuild water and regenerate its published identifier from borrowed atoms.
     var rebuilt = try inchi.fromIdentifier.standard(water_inchi, null);
     defer rebuilt.deinit();
     try w.print("water from identifier = {d} atoms\n", .{rebuilt.atoms().len});
@@ -125,11 +92,7 @@ pub fn main(init: std.process.Init) !void {
     defer round_trip.deinit();
     try expect("water regenerated", round_trip.identifier().?, water_inchi);
 
-    // The extended polymer/V3000 route. With no polymer and no V3000 block the
-    // extended input is the classic input, so it has to produce the same
-    // published identifier; and the extended reader rebuilds it into the
-    // extended structure, reporting no extensions because the identifier
-    // described none.
+    // Extended glycine generation and reading report no polymer/V3000 blocks.
     const glycine_inchi = "InChI=1S/C2H5NO2/c3-1-2(4)5/h1,3H2,(H,4,5)";
     const glycine = try molecules.glycine(&scratch);
     var extended = try inchi.fromMolecule.extended(.{ .atoms = @constCast(glycine.atoms) });
@@ -152,8 +115,7 @@ pub fn main(init: std.process.Init) !void {
     }
     try w.print("glycine extended rebuild = {d} atoms\n", .{extended_read.atoms().len});
 
-    // The AuxInfo line a water run produced rebuilds the molecule, and the
-    // molecule regenerates the published identifier.
+    // Water's AuxInfo line rebuilds the molecule and regenerates its identifier.
     var water_output = try inchi.fromMolecule.standard(try molecules.water(&scratch));
     defer water_output.deinit();
     const aux_line = water_output.auxInfo() orelse {
@@ -173,8 +135,7 @@ pub fn main(init: std.process.Init) !void {
     defer from_aux_inchi.deinit();
     try expect("water from AuxInfo", from_aux_inchi.identifier().?, water_inchi);
 
-    // The molfile shortcut: an identifier straight out of a CTfile, with no
-    // molecule built here at all.
+    // Convert the ethanol CTfile directly, without building a molecule.
     var molfile = try inchi.fromMolfile(ethanol_molfile, null);
     defer molfile.deinit();
     try w.print("ethanol molfile = {s}\n", .{molfile.identifier() orelse "nothing"});
@@ -192,12 +153,8 @@ pub fn main(init: std.process.Init) !void {
     try w.flush();
 }
 
-/// The provider this run should load, from `--provider <path>` or from
-/// `INCHI_TEST_PROVIDER`.
-///
-/// Both are explicit. Nothing here looks in a default location or falls back
-/// to a linked copy: a runtime-loading build that was not told which file to
-/// load reports that it was not told, rather than loading something else.
+/// Selects the runtime provider from `--provider <path>` or `INCHI_TEST_PROVIDER`.
+/// No default path or linked fallback is used.
 fn providerRequest(init: std.process.Init) ConfigurationError![]const u8 {
     const args = init.minimal.args.toSlice(init.arena.allocator()) catch
         return noProvider();
@@ -212,8 +169,6 @@ fn providerRequest(init: std.process.Init) ConfigurationError![]const u8 {
         return noProvider();
 }
 
-/// Say which variable is missing. An error name on its own would send the next
-/// person into the loader instead of to the command line.
 fn noProvider() ConfigurationError {
     std.debug.print(
         "smoke: this is a runtime-loading build. Pass --provider <path>, or " ++
@@ -225,8 +180,6 @@ fn noProvider() ConfigurationError {
     return error.NoProviderConfigured;
 }
 
-/// Generates an identifier from `molecule` and prints it with its key, then
-/// checks both against the answers PubChem publishes.
 fn check(
     w: *std.Io.Writer,
     what: []const u8,
@@ -257,7 +210,6 @@ fn check(
     }
 }
 
-/// Compare one answer with the published one and say so when they differ.
 fn expect(what: []const u8, got: [:0]const u8, want: [:0]const u8) !void {
     if (!std.mem.eql(u8, got, want)) {
         std.debug.print("{s}: wanted {s}, got {s}\n", .{ what, want, got });

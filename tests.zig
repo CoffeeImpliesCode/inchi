@@ -1,37 +1,8 @@
 //! SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
 //! See FORK-LICENSE.md for the full grant and the owner authorization behind it.
-//!
-//! Behavioural tests for the InChI facade.
-//!
-//! The oracle is `testdata/pubchem_known_answers.tsv`: identifiers and keys
-//! read out of PubChem's own compound records, with the retrieval recorded in
-//! the file's header. Nothing here asks the library what it thinks the answer
-//! is and calls it correct. The molecules are built from element symbols,
-//! bonds and implicit hydrogen counts in `zig/molecules.zig`; where a molecule
-//! carries stereochemistry, the test asserts that the two parities of one
-//! skeleton produce exactly the two identifiers PubChem publishes for that
-//! pair of compounds, and that each identifier's key is the key published with
-//! it. That is a complete known-answer statement about both parities without
-//! the test having to predict which parity is which -- which it cannot, because
-//! the parity is defined relative to the neighbour order and the canonical
-//! ranking InChI computes from it (`inchi_api.h:255-256`).
-//!
-//! One round trip is included as a supplement rather than as the oracle: the
-//! structure upstream rebuilds from L-alanine's identifier goes straight back
-//! into a `Molecule` and regenerates that identifier, with no copy, which also
-//! exercises `GetStructFromStdINCHI`'s output as `GetStdINCHI`'s input.
-//! `GetINCHIfromINCHI` is exercised on the same published strings, with no
-//! options and with upstream's own layer-keeping option string, because that
-//! string is what decides whether the answer comes back standard.
-//!
-//! Every public entry point of the facade is called here, so `zig build check`
-//! compiling this file is a check of the whole surface for each target.
-//!
-//! Three more directions are covered at the end of this file, each against a
-//! published answer or against upstream's own documented behaviour: the AuxInfo
-//! line rebuilding a structure, the molfile shortcut, and the extended
-//! polymer/V3000 input and output. No stereo compound is used in the AuxInfo
-//! table; the alanine test above explains why.
+//! Tests compare facade results with PubChem identifiers and keys recorded in
+//! `testdata/pubchem_known_answers.tsv`; round trips are supplementary checks.
+//! Coverage includes stereo pairs, conversions, AuxInfo, molfiles, and extended data.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -55,15 +26,7 @@ fn nativeReady() void {
 /// PubChem's published answers, embedded so no test needs a file system.
 const fixture_text = @embedFile("testdata/pubchem_known_answers.tsv");
 
-/// One published answer, terminated at exactly its own length.
-///
-/// The facade takes `[:0]const u8`, and a sentinel slice stops *before* its
-/// terminator: the zero has to be the byte at `len`, not a byte the answer
-/// ends with. Appending `"\x00"` to a fixture field would lengthen the slice
-/// over the terminator instead, which is a different string from the published
-/// one even though C reads both the same way. The value is comptime, so the
-/// concatenation is a static constant, and the answer is not copied into
-/// storage of a fixed size first.
+/// Makes a sentinel slice whose length excludes the appended terminator.
 fn terminated(comptime value: []const u8) [:0]const u8 {
     return (value ++ "\x00")[0..value.len :0];
 }
@@ -76,8 +39,7 @@ const Compound = struct {
     key: [:0]const u8,
 };
 
-/// The table parsed at comptime, so every answer below ends up in storage
-/// that outlives the block and a NUL-terminated slice can be taken of it.
+/// Compile-time parsed records with static lifetime.
 const compounds = blk: {
     @setEvalBranchQuota(10_000);
     var list: [16]Compound = undefined;
@@ -106,19 +68,14 @@ fn compound(name: []const u8) Compound {
     @panic("known-answer compound is missing from testdata/pubchem_known_answers.tsv");
 }
 
-/// The same identifier without its `S`, i.e. the non-standard form
-/// `InChI=1/...` that `CheckINCHI` classifies separately
-/// (`inchi_dll.c:872-885`).
+/// L-alanine identifier without the standard `S` prefix.
 const non_standard_l_alanine: [:0]const u8 = blk: {
     const standard = compound("l_alanine").identifier;
-    // Both operands are sentinel slices, so the concatenation is one and the
-    // terminator is the published identifier's own: the byte one past its
-    // last character, not a byte inside the answer.
+    // Concatenation preserves the published identifier's sentinel boundary.
     break :blk "InChI=1/" ++ standard[9..];
 };
 
-/// Asserts that two results are exactly the two published identifiers, one
-/// each, and that each one's key is the key published beside it.
+/// Requires the two published identifiers and their keys, in either order.
 fn expectPublishedPair(results: [2][:0]const u8, answers: [2]Compound) !void {
     var matched = [2]bool{ false, false };
     for (results) |got| {
@@ -141,8 +98,7 @@ fn elementOf(atom: *const inchi.Atom) []const u8 {
     return std.mem.sliceTo(&atom.elname, 0);
 }
 
-/// What a rebuilt structure is made of. The counts are of atoms, except the
-/// last, which is the hydrogens the atoms carry implicitly.
+/// Atom counts plus implicit hydrogens.
 const Composition = struct {
     carbons: usize = 0,
     nitrogens: usize = 0,
@@ -151,8 +107,7 @@ const Composition = struct {
     implicit_hydrogens: usize = 0,
 };
 
-/// Counts what a structure is made of. An element none of these fixtures
-/// builds fails the test rather than being counted as nothing.
+/// Counts atoms and implicit hydrogens; unknown elements fail the test.
 fn composition(atoms: []const inchi.Atom) !Composition {
     var result: Composition = .{};
     for (atoms) |*atom| {
@@ -173,9 +128,7 @@ fn composition(atoms: []const inchi.Atom) !Composition {
     return result;
 }
 
-/// The two blocks an InChIKey's dashes separate: the first is the skeleton
-/// hash and the second the hash of what the skeleton leaves out
-/// (`ikey_dll.c:527-536`).
+/// Splits an InChIKey into its skeleton and remaining hash blocks.
 fn keyBlocks(text: []const u8) [2][]const u8 {
     const first = std.mem.findScalar(u8, text, '-') orelse return .{ text, text };
     const second = std.mem.findScalarPos(u8, text, first + 1, '-') orelse return .{ text[0..first], text[first + 1 ..] };
@@ -193,20 +146,13 @@ test "water built from one oxygen matches the identifier and key PubChem publish
     try testing.expectEqual(inchi.Status.okay, output.status);
     try testing.expect(!output.isWarning());
     try testing.expectEqualStrings(expected.identifier, output.identifier().?);
-    // A clean run has nothing to report, so nothing is reported.
     try testing.expectEqualStrings("", output.message());
 
     const computed = try inchi.key(expected.identifier, .{});
     try testing.expectEqualStrings(expected.key, computed.keyText());
     try testing.expectEqual(inchi.KeyVerdict.standard, inchi.checkKey(computed.keyText()));
     try testing.expectEqual(inchi.IdentifierVerdict.standard, inchi.checkIdentifier(expected.identifier, false));
-    // Strict mode regenerates the identifier and demands it back unchanged
-    // (`inchi_dll.c:954-981`), and for a standard identifier it cannot: the
-    // option string it builds there asks for the Fixed-H and Reconnected
-    // layers, and either of those clears the standard flag as it is parsed
-    // (`ichiparm.c:350-364`), so what comes back is the same compound as
-    // `InChI=1/...`. A well-formed standard identifier is therefore a failed
-    // conversion, and the layout verdict above is the one that classifies it.
+    // Strict checking regenerates with Fixed-H/Reconnected options, so a valid standard ID can fail conversion.
     try testing.expectEqual(inchi.IdentifierVerdict.conversion_failed, inchi.checkIdentifier(expected.identifier, true));
 }
 
@@ -221,8 +167,7 @@ test "methane built from one carbon matches the identifier and key PubChem publi
     try testing.expectEqual(inchi.Status.okay, output.status);
     try testing.expectEqualStrings(expected.identifier, output.identifier().?);
 
-    // The standard-key entry point computes no extension hash and refuses a
-    // non-standard identifier, which is the whole difference from `key`.
+    // Standard-key conversion rejects non-standard identifiers and omits extension hashes.
     const computed = try inchi.standardKey(output.identifier().?);
     try testing.expectEqualStrings(expected.key, computed.keyText());
     try testing.expectEqual(@as(?[:0]const u8, null), computed.firstHash());
@@ -245,8 +190,7 @@ test "ethanol: the non-standard entry point agrees, and /AuxNone leaves the iden
     try testing.expectEqual(inchi.Status.okay, full.status);
     try testing.expectEqualStrings(expected.identifier, full.identifier().?);
 
-    // /AuxNone is a presentation switch (`ichiparm.c:211-216`): it cannot move
-    // the identifier, so the identifier is what this asserts.
+    // `/AuxNone` does not change the identifier.
     var without_aux = try inchi.fromMolecule.full(.{
         .atoms = ethanol.atoms,
         .stereo0d = ethanol.stereo0d,
@@ -282,9 +226,7 @@ test "glycine's zwitterion warns about the protons it moved and still yields gly
     var zwitterion = try inchi.fromMolecule.standard(try molecules.glycineZwitterion(&scratch));
     defer zwitterion.deinit();
 
-    // A warning is a qualified success, not a failure: the identifier is
-    // there, and it is the published one, because upstream neutralized
-    // NH3(+)/COO(-) to exactly the skeleton `glycine` builds.
+    // The zwitterion is normalized to glycine and reported as a warning.
     try testing.expectEqual(inchi.Status.okay, neutral.status);
     try testing.expect(!neutral.isWarning());
     try testing.expectEqual(inchi.Status.warning, zwitterion.status);
@@ -292,10 +234,6 @@ test "glycine's zwitterion warns about the protons it moved and still yields gly
     try testing.expectEqualStrings(expected.identifier, zwitterion.identifier().?);
     try testing.expectEqualStrings(neutral.identifier().?, zwitterion.identifier().?);
 
-    // Upstream's own words about the protons normalization moved are not
-    // asserted: the status above is the part of that message a caller acts
-    // on, and the published identifier is the part that has to be right. The
-    // neutral run has nothing to report and says nothing.
     try testing.expectEqualStrings("", neutral.message());
 }
 
@@ -308,7 +246,7 @@ test "renumbering the atoms of ethanol and benzene changes nothing" {
     var renumbered_ethanol = try inchi.fromMolecule.standard(try molecules.ethanolRenumbered(&scratch));
     defer renumbered_ethanol.deinit();
     try testing.expectEqualStrings(ethanol.identifier().?, renumbered_ethanol.identifier().?);
-    // And both are the published answer, not just each other.
+    // Confirm canonicalization matches the published answer.
     try testing.expectEqualStrings(compound("ethanol").identifier, renumbered_ethanol.identifier().?);
 
     var benzene = try inchi.fromMolecule.standard(try molecules.benzene(&scratch));
@@ -346,18 +284,12 @@ test "the structure upstream rebuilds from L-alanine regenerates L-alanine" {
 
     try testing.expectEqual(inchi.Status.okay, structure.status);
     try testing.expect(!structure.isWarning());
-    // Nothing was dropped on the way from identifier to structure, which is
-    // also what keeps upstream from reporting a warning here
-    // (`inchi_dll.c:2829-2840`).
+    // The rebuild preserves every layer and reports no differences.
     for (structure.warnings()) |row| for (row) |flag| {
         try testing.expectEqual(@as(c_ulong, 0), flag);
     };
 
-    // C3H7NO2 is six heavy atoms and seven hydrogens, and the rebuild carries
-    // all seven -- but the one on the stereocentre is an atom of the structure
-    // rather than an implicit count, because a tetrahedral parity has nothing
-    // to be measured against otherwise (`inchi_api.h:248-270`). So what the
-    // composition has to agree with is the published formula, not a length.
+    // Tetrahedral parity requires the stereocentre's hydrogen as an explicit atom.
     const atoms = structure.atoms();
     const made = try composition(atoms);
     try testing.expectEqual(@as(usize, 3), made.carbons);
@@ -366,16 +298,11 @@ test "the structure upstream rebuilds from L-alanine regenerates L-alanine" {
     try testing.expectEqual(@as(usize, 1), made.hydrogens);
     try testing.expectEqual(@as(usize, 6), made.implicit_hydrogens);
 
-    // One stereocentre, and it is a tetrahedral one.
     const stereo = structure.stereo0d();
     try testing.expectEqual(@as(usize, 1), stereo.len);
     try testing.expectEqual(inchi.StereoType0D.tetrahedral, @as(inchi.StereoType0D, @enumFromInt(stereo[0].type)));
 
-    // Its central atom is the alpha carbon: the one carbon that has no
-    // hydrogen of its own, because that hydrogen is the explicit atom counted
-    // above, and it is bonded to it. Upstream fills the four neighbour slots
-    // with the bond partners of a four-bonded central atom
-    // (`readinch.c:1463-1472`).
+    // The alpha carbon's four neighbors include the explicit hydrogen.
     const centre: usize = @intCast(stereo[0].central_atom);
     try testing.expectEqualStrings("C", elementOf(&atoms[centre]));
     try testing.expect(atoms[centre].num_iso_H[0] == 0);
@@ -386,8 +313,7 @@ test "the structure upstream rebuilds from L-alanine regenerates L-alanine" {
     const bonds = atoms[centre].neighbor[0..@intCast(atoms[centre].num_bonds)];
     try testing.expect(std.mem.findScalar(c_short, bonds, @intCast(hydrogen)) != null);
 
-    // The rebuilt atoms go straight back in, with no copy: `GetStdINCHI` reads
-    // its input and never writes through it.
+    // `GetStdINCHI` reads these rebuilt arrays without modifying them.
     var regenerated = try inchi.fromMolecule.standard(.{
         .atoms = atoms,
         .stereo0d = stereo,
@@ -412,8 +338,7 @@ test "isotopic hydrogens put water and heavy water in different classes" {
     try testing.expectEqualStrings(heavy.identifier, labelled.identifier().?);
     try testing.expect(!std.mem.eql(u8, ordinary.identifier().?, labelled.identifier().?));
 
-    // The connectivity layer is identical; only the isotope layer differs, and
-    // the first two blocks of the keys differ because of it.
+    // The isotope layer changes the first two InChIKey blocks, not connectivity.
     try testing.expect(std.mem.startsWith(u8, labelled.identifier().?, "InChI=1S/H2O/h1H2/i/hD2"));
     const light_key = try inchi.key(ordinary.identifier().?, .{});
     const heavy_key = try inchi.key(labelled.identifier().?, .{});
@@ -445,11 +370,7 @@ test "the stereobond 0D parity separates but-2-ene into the two isomers PubChem 
 
 test "regenerating a published identifier reproduces it exactly" {
     nativeReady();
-    // No options is the conversion that keeps every layer the identifier
-    // already has, because none of them is filtered out
-    // (`inchi_api.h:889-901`), and the comparison is against what PubChem
-    // publishes rather than against the input, so this is a known-answer
-    // statement and not a conversion that only agrees with itself.
+    // No options preserves every layer; the expected result is PubChem's published identifier.
     for ([_][]const u8{
         "water", "methane", "ethanol", "benzene", "glycine", "l_alanine", "heavy_water",
     }) |name| {
@@ -465,20 +386,14 @@ test "the layer-keeping option string is what makes the conversion non-standard"
     nativeReady();
     const water = compound("water").identifier;
 
-    // `/FixedH` and `/RecMet` are how a caller asks for the Fixed-H and
-    // Reconnected layers to be kept (`inchi_api.h:894-895`), and each of them
-    // clears the standard flag while the options are parsed
-    // (`ichiparm.c:350-364`). A `1S` identifier cannot be reproduced under
-    // them, and that is also why upstream's own strict `CheckINCHI` reports
-    // `INCHI_FAIL_I2I` for every standard identifier: it regenerates with
-    // exactly this string and compares (`inchi_dll.c:954-981`).
+    // Keeping Fixed-H and Reconnected layers converts this standard identifier to non-standard.
     var with_layers = try inchi.fromIdentifier.converted(water, molecules.strict_options);
     defer with_layers.deinit();
     try testing.expectEqual(inchi.Status.okay, with_layers.status);
     try testing.expectEqualStrings("InChI=1/H2O/h1H2", with_layers.identifier().?);
     try testing.expectEqual(inchi.IdentifierVerdict.non_standard, inchi.checkIdentifier(with_layers.identifier().?, false));
 
-    // The same input with no options at all stays standard.
+    // No options preserves the standard identifier.
     var without_layers = try inchi.fromIdentifier.converted(water, null);
     defer without_layers.deinit();
     try testing.expectEqual(inchi.Status.okay, without_layers.status);
@@ -492,11 +407,7 @@ test "a non-standard identifier is accepted by the general reader and refused by
         inchi.checkIdentifier(non_standard_l_alanine, false),
     );
 
-    // The standard-only entry point guards on the `S` before doing any work
-    // (`inchi_dll.c:2464-2476`), so it produces no structure and no text at
-    // all -- the struct it was handed is the one this facade zeroed, which is
-    // why a refused structure has to answer with empty arrays rather than with
-    // a cast of the null pointer it holds.
+    // The standard-only reader rejects `1/...` before writing output; empty accessors must be safe.
     var refused = try inchi.fromIdentifier.standard(non_standard_l_alanine, null);
     defer refused.deinit();
     try testing.expectEqual(inchi.Status.rejected, refused.status);
@@ -505,8 +416,7 @@ test "a non-standard identifier is accepted by the general reader and refused by
     try testing.expectEqualStrings("", refused.message());
     try testing.expectEqualStrings("", refused.log());
 
-    // The general reader rebuilds what the standard-only entry point refused:
-    // the same alanine, with the hydrogen its parity needs as an atom.
+    // The general reader accepts the same identifier and rebuilds its explicit stereocentre hydrogen.
     var accepted = try inchi.fromIdentifier.full(non_standard_l_alanine, null);
     defer accepted.deinit();
     try testing.expectEqual(inchi.Status.okay, accepted.status);
@@ -516,14 +426,12 @@ test "a non-standard identifier is accepted by the general reader and refused by
     try testing.expectEqual(@as(usize, 2), rebuilt.oxygens);
     try testing.expectEqual(@as(usize, 1), rebuilt.hydrogens);
 
-    // The two key entry points disagree on exactly this, which is the only
-    // thing `GetStdINCHIKeyFromStdINCHI` adds (`ikey_dll.c:95-102`).
+    // Only `standardKey` rejects a non-standard identifier.
     try testing.expectError(error.InvalidStdInchi, inchi.standardKey(non_standard_l_alanine));
     const non_standard_key = try inchi.key(non_standard_l_alanine, .{});
     const non_standard_verdict = inchi.checkKey(non_standard_key.keyText());
     try testing.expectEqual(inchi.KeyVerdict.non_standard, non_standard_verdict);
-    // Serialize the returned verdict, not just its tag: native non-standard
-    // validity is -1, while invalid length is 1 (`inchi_api.h:1062-1066`).
+    // Preserve the upstream numeric verdict, not only its enum tag.
     try testing.expectEqual(@as(c_int, -1), @intFromEnum(non_standard_verdict));
 }
 
@@ -547,18 +455,12 @@ test "malformed identifiers and keys are reported as upstream reports them" {
     const layout_verdict = inchi.checkKey("XLYOFNOQVPJJNP-UHFFFAOYSA-n");
     try testing.expectEqual(inchi.KeyVerdict.invalid_layout, layout_verdict);
     try testing.expectEqual(@as(c_int, 2), @intFromEnum(layout_verdict));
-    // The version is the tenth character of the second block (index 24)
-    // (`ikey_dll.c:577-581`), not the last character: that one is the
-    // (de)protonation flag, and any base-26 letter is a legal one
-    // (`ikey_dll.c:554-557`), so `-B` is a well formed key rather than a
-    // malformed one.
+    // The final character is the protonation flag, so this key has an invalid version, not layout.
     const version_verdict = inchi.checkKey("XLYOFNOQVPJJNP-UHFFFAOYSS-B");
     try testing.expectEqual(inchi.KeyVerdict.invalid_version, version_verdict);
     try testing.expectEqual(@as(c_int, 3), @intFromEnum(version_verdict));
 
-    // The general reader reports EOF when no atoms were produced, including
-    // this malformed layout (inchi_dll.c:2821-2825). The standard-only
-    // reader's earlier rejection is exercised separately above.
+    // The general reader reports no data for malformed input.
     var refused = try inchi.fromIdentifier.full("InChI=1SX", null);
     defer refused.deinit();
     try testing.expectEqual(inchi.Status.no_data, refused.status);
@@ -573,8 +475,7 @@ test "a pseudo-element is refused" {
     var output = try inchi.fromMolecule.standard(star);
     defer output.deinit();
 
-    // Neither entry point can represent a star atom; both refuse it before
-    // generating anything (`inchi_dll.c:247-250`, `inchi_dll.c:275-278`).
+    // The classic entry points reject a `*` atom before generation.
     try testing.expectEqual(inchi.Status.rejected, output.status);
     try testing.expectEqual(@as(?[:0]const u8, null), output.identifier());
 
@@ -593,7 +494,7 @@ test "the facade refuses input it cannot pass on faithfully" {
     try testing.expectError(error.AtomIndexOutOfRange, inchi.connect(filled, 0, 7, .single, .none));
     try testing.expectError(error.AtomIndexOutOfRange, inchi.connect(filled, 1, 1, .single, .none));
 
-    // Twenty bonds is the whole adjacency list (`MAXVAL`, inchi_api.h:105).
+    // `max_bonds_per_atom` is the full adjacency-list capacity.
     var atoms: [2]inchi.Atom = undefined;
     atoms[0] = try inchi.atom("C", .none);
     atoms[1] = try inchi.atom("C", .none);
@@ -603,24 +504,14 @@ test "the facade refuses input it cannot pass on faithfully" {
     }
     try testing.expectError(error.TooManyNeighbors, inchi.connect(atoms[0..], 0, 1, .single, .none));
 
-    // `num_bonds` is a raw caller-written `AT_NUM`, a `signed short`
-    // (`inchi_api.h:124`), so a negative count is representable and it is not a
-    // shorter list: upstream reads the field as `for (j = 0; j < num_bonds; j++)`
-    // and visits nothing when it is negative, so the record counts no entries
-    // and has none to append to. `connect` refuses it from both ends with the
-    // same error a full list gives, and it answers the same way in every
-    // optimisation mode -- turning the count into an index instead trapped in
-    // Debug and ReleaseSafe, and wrapped to a huge value in ReleaseFast and
-    // ReleaseSmall, so one call used to answer two different ways.
+    // Negative raw counts are representable; `connect` rejects them rather than treating them as empty lists.
     var negative: [2]inchi.Atom = undefined;
     negative[0] = try inchi.atom("C", .none);
     negative[1] = try inchi.atom("C", .none);
     negative[0].num_bonds = -1;
     try testing.expectError(error.TooManyNeighbors, inchi.connect(negative[0..], 0, 1, .single, .none));
 
-    // The second end is refused the same way, and the refusal writes to neither
-    // list: both counts are exactly what they were before the call, so nothing
-    // was normalised behind the caller's back either.
+    // The second-end check also leaves both counts unchanged.
     negative[0].num_bonds = 0;
     negative[1].num_bonds = -1;
     try testing.expectError(error.TooManyNeighbors, inchi.connect(negative[0..], 0, 1, .single, .none));
@@ -628,20 +519,10 @@ test "the facade refuses input it cannot pass on faithfully" {
     try testing.expectEqual(@as(i16, -1), negative[1].num_bonds);
 }
 
-// ---------------------------------------------------------------------------
-// The directions added with the extended, AuxInfo and molfile surfaces
-// ---------------------------------------------------------------------------
-
 test "the AuxInfo line rebuilds each compound PubChem publishes" {
     nativeReady();
-    // The AuxInfo direction is not a round trip the library agrees with
-    // itself: the answer it has to end at is the same published identifier the
-    // molecule was built from. Only the compounds whose published identifier
-    // carries no stereo layer are used here, because the 0D parity in an
-    // AuxInfo line is stored relative to *that line's* atom numbering and the
-    // test above declines to predict which of two parities upstream will call
-    // `s1`; a stereo compound belongs in a test that fixes an answer rather
-    // than a pair.
+    // Compare with published identifiers, not only a self-consistent round trip.
+    // Use non-stereo records because AuxInfo parity depends on its atom order.
     for ([_][]const u8{
         "water", "methane", "ethanol", "benzene", "glycine",
     }) |name| {
@@ -660,9 +541,7 @@ test "the AuxInfo line rebuilds each compound PubChem publishes" {
             try molecules.glycine(&scratch));
         defer output.deinit();
 
-        // The identifier and its auxiliary line are two views on one
-        // allocation (`inchi_dll.c:756-780`), so the line handed to the reader
-        // is borrowed here and never outlives `output`.
+        // AuxInfo shares the identifier allocation and is consumed before `output` is released.
         const aux_line = output.auxInfo() orelse {
             std.debug.print("{s}: no AuxInfo line\n", .{name});
             return error.MissingAuxInfo;
@@ -677,8 +556,7 @@ test "the AuxInfo line rebuilds each compound PubChem publishes" {
             return error.AuxInfoRefused;
         }
 
-        // And the structure that came back regenerates the published
-        // identifier, with no copy of it anywhere.
+        // Regenerate the published identifier directly from the rebuilt structure.
         var again = try inchi.fromMolecule.standard(rebuilt.molecule());
         defer again.deinit();
         try testing.expectEqualStrings(expected.identifier, again.identifier().?);
@@ -694,11 +572,7 @@ test "an AuxInfo line that is not one is refused, and leaves nothing to release"
     try testing.expectEqual(@as(usize, 0), refused.atoms().len);
     try testing.expectEqual(@as(usize, 0), refused.stereo0d().len);
 
-    // Upstream releases the arrays itself on any status other than okay or
-    // warning (`ichilnct.c:173-177`), and that release NULLs both pointers
-    // (`inchi_dll_b.c:106-113`, `readinch.c:125-132`). So the `deinit` above
-    // is a no-op rather than a second free, and that is the whole ownership
-    // claim: a refused read is still a value that must be released.
+    // Upstream frees arrays on refusal; the result must still be safe to deinitialize.
     const released_atoms: usize = @intCast(refused.raw.num_atoms);
     try testing.expectEqual(@as(usize, 0), released_atoms);
     try testing.expectEqual(@as(usize, 0), @intFromPtr(refused.raw.atom));
@@ -707,8 +581,6 @@ test "an AuxInfo line that is not one is refused, and leaves nothing to release"
 
 test "the molfile route produces PubChem's published identifier and key" {
     nativeReady();
-    // A V2000 CTfile for ethanol, built here rather than read from a fixture so
-    // that every byte of it is visible next to the answer it has to produce.
     const molfile =
         "ethanol\n" ++
         "  pubchem known answer\n" ++
@@ -742,24 +614,7 @@ test "the molfile route produces PubChem's published identifier and key" {
 
 test "the molfile route answers okay for text it runs out of, and refused for a counts line it cannot read" {
     nativeReady();
-    // One line is not a molfile: the second of the three header lines is past
-    // the end of the input, which the reader numbers 3 and the data-line
-    // driver adds ten to (`mol_fmt1.c:491-497`, `mol_fmt1.c:218-224`).
-    // Thirteen is inside the band `TreatErrorsInReadTheStructure` reads as end
-    // of file (`runichi2.c:728-740`), so `GetOneStructure` answers `_IS_EOF`.
-    //
-    // `MakeINCHIFromMolfileText` does not turn that into a refusal. It jumps to
-    // its cleanup with the EOF code still in `retcode`, the cleanup leaves its
-    // own code at zero, and it returns the larger of the two
-    // (`inchi_dll_b.c:198-201`, `inchi_dll_b.c:257-280`): `-1 < 0`, so the EOF
-    // loses and the caller is handed `mol2inchi_Ret_OKAY`.
-    //
-    // So `okay` from this entry point means "nothing reported an error", not
-    // "an identifier exists", and the identifier is asserted in its own right:
-    // generation never ran, so `out->szInChI` is never written
-    // (`inchi_dll.c:756-780`). The log is the one string written on every
-    // return from here, this path included (`inchi_dll_b.c:257-273`), which is
-    // why a value with no identifier is still an owner.
+    // Upstream can return `okay` at EOF without an identifier; assert output fields separately.
     var exhausted = try inchi.fromMolfile("not a molfile\n", null);
     defer exhausted.deinit();
 
@@ -767,11 +622,7 @@ test "the molfile route answers okay for text it runs out of, and refused for a 
     try testing.expectEqual(@as(?[:0]const u8, null), exhausted.identifier());
     try testing.expect(exhausted.log().len != 0);
 
-    // A counts line that cannot be interpreted is not end of file: error 23 is
-    // outside the 11..19 band, so it classifies as fatal
-    // (`mol_fmt1.c:621-627`, `mol_fmt1.c:227-232`, `ichimake.c:2489-2492`),
-    // and a fatal or an error read is the single code this entry point has for
-    // either (`inchi_dll_b.c:184-197`) -- `mol2inchi_Ret_ERROR`.
+    // An unreadable counts line maps to `MolfileStatus.rejected`.
     const broken_counts =
         "broken counts\n" ++
         "\n" ++
@@ -788,8 +639,7 @@ test "the molfile route answers okay for text it runs out of, and refused for a 
 
 test "the extended route carries a pseudo-element only when NPZz lets it" {
     nativeReady();
-    // `INCHI_OPTION_PREFX` (`mode.h:262-268`), and the same switch the option
-    // strings in `zig/molecules.zig` make: `/` on Windows, `-` elsewhere.
+    // The option prefix is `/` on Windows and `-` elsewhere.
     const npzz: [:0]const u8 = switch (builtin.target.os.tag) {
         .windows => "/NPZz",
         else => "-NPZz",
@@ -799,29 +649,17 @@ test "the extended route carries a pseudo-element only when NPZz lets it" {
     _ = try molecules.pseudoAtom(&scratch);
     const atoms = scratch.atoms[0..scratch.atom_count];
 
-    // `GetINCHI` and `GetStdINCHI` refuse a `*` element outright
-    // (`inchi_dll.c:247-250`, `inchi_dll.c:275-278`), which the test above
-    // already covers. `GetINCHIEx` is the entry point that can represent one:
-    // before anything else it rewrites every `*` in the caller's own array to
-    // `Zz` (`inchi_dll.c:325-340`), which is why its input takes mutable
-    // atoms.
+    // `GetINCHIEx` rewrites input `*` atoms to `Zz`, so it requires mutable atoms.
     var refused = try inchi.fromMolecule.extended(.{ .atoms = atoms });
     defer refused.deinit();
 
     try testing.expectEqualStrings("Zz", elementOf(&atoms[0]));
 
-    // Taking the `*` in is not accepting it. A non-polymer `Zz` is an invalid
-    // element unless `bNPZz` is set -- the gate is `pseudos_allowed`
-    // (`runichi3.c:4408`, `runichi3.c:4437-4443`) -- and both it and the
-    // polymer switch default to off (`ichiparm.c:672`, `ichiparm.c:682`). So
-    // this route refuses the very atom it just rewrote, one layer deeper than
-    // the classic one, and reports it as an ordinary `inchi_Ret_ERROR`
-    // (`runichi.c:2919-2927`, `inchi_dll.c:730`).
+    // A non-polymer `Zz` is rejected unless `NPZz` enables it.
     try testing.expectEqual(inchi.Status.rejected, refused.status);
     try testing.expectEqual(@as(?[:0]const u8, null), refused.identifier());
 
-    // `NPZz` is what opens that gate (`ichiparm.c:445-449`), and the same
-    // molecule goes through under it.
+    // `NPZz` enables the pseudo-element.
     var allowed_scratch: molecules.Scratch = .{};
     _ = try molecules.pseudoAtom(&allowed_scratch);
     const allowed_atoms = allowed_scratch.atoms[0..allowed_scratch.atom_count];
@@ -835,10 +673,7 @@ test "the extended route carries a pseudo-element only when NPZz lets it" {
     try testing.expectEqualStrings("Zz", elementOf(&allowed_atoms[0]));
     try testing.expect(!rejected(allowed.status));
 
-    // And what it produces is not a standard identifier. A structure holding a
-    // non-polymer `Zz` is printed beta (`ichiprt1.c:1700-1703`,
-    // `ichiprt1.c:3149-3158`), so this is `InChI=1B/` where a standard one is
-    // `InChI=1S/`: carrying the pseudo-element costs the standard prefix.
+    // Non-polymer `Zz` identifiers use the beta prefix `InChI=1B/`.
     const identifier = allowed.identifier() orelse return error.MissingIdentifier;
     try testing.expect(std.mem.startsWith(u8, identifier, "InChI=1B/"));
 }
@@ -850,21 +685,13 @@ test "the extended route reproduces the published identifier and reports no exte
     var scratch: molecules.Scratch = .{};
     const glycine = try molecules.glycine(&scratch);
 
-    // With no polymer and no V3000 block the extended input is the classic
-    // input, and the extended entry point is the same generation
-    // (`inchi_dll.c:325-340` delegates to `GetINCHI1`), so the answer is the
-    // published one rather than a different spelling of it.
+    // Without polymer or V3000 data, extended generation matches classic generation.
     var generated = try inchi.fromMolecule.extended(.{ .atoms = @constCast(glycine.atoms) });
     defer generated.deinit();
     try testing.expectEqual(inchi.Status.okay, generated.status);
     try testing.expectEqualStrings(expected.identifier, generated.identifier().?);
 
-    // And the extended reader rebuilds that identifier into the extended
-    // structure, which reports no polymer and no V3000 block because the
-    // identifier described none -- upstream fills either only when there is
-    // something to fill them with (`inchi_dll.c:2737-2760`), and
-    // `FreeStructFromINCHIEx` tests each for null before releasing it
-    // (`inchi_dll.c:2912-2916`).
+    // The extended reader returns null polymer/V3000 blocks when the identifier has neither.
     var rebuilt = try inchi.fromIdentifier.extended(expected.identifier, null);
     defer rebuilt.deinit();
     try testing.expectEqual(inchi.Status.okay, rebuilt.status);
@@ -876,8 +703,7 @@ test "the extended route reproduces the published identifier and reports no exte
     try testing.expectEqual(@as(usize, 1), made.nitrogens);
     try testing.expectEqual(@as(usize, 2), made.oxygens);
 
-    // The rebuilt atoms go back in with no copy, and reproduce the published
-    // identifier a third time.
+    // Standard generation from rebuilt arrays still matches the published identifier.
     var again = try inchi.fromMolecule.standard(.{
         .atoms = rebuilt.atoms(),
         .stereo0d = rebuilt.stereo0d(),
@@ -893,4 +719,3 @@ fn rejected(status: inchi.Status) bool {
         else => false,
     };
 }
-

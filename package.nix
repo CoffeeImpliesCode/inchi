@@ -1,20 +1,10 @@
-# package.nix — the one source-only derivation for this SDK.
-#
 # SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
-#
-# Both entry points use:
-#   pkgs.callPackage ./package.nix { zig = pkgs.zig_0_16; inherit linkage; }
-# `linkage` defaults to "static", the SDK's native policy. One derivation;
-# the .static/.shared variants are made by the entry points.
+# Shared by the flake and devenv packaging entry points.
 
 { lib, stdenv, zig, linkage ? "static" }:
 
 let
-  # Upstream defines the software version in one place, bcf_s.h:52
-  # `#define CURRENT_VER "1.07.5" /* ... */`. Read it there rather than
-  # restating it, so a version bump cannot pass through this file unnoticed.
-  # The pattern cannot cross a newline and `builtins.match` has to span the
-  # whole string, so it is applied to one line at a time.
+  # Read the software version from upstream's CURRENT_VER macro.
   version =
     let
       currentVer = "[^\n]*#define CURRENT_VER \"([^\"]+)\"[^\n]*";
@@ -27,11 +17,7 @@ let
 
   validLinkages = [ "static" "dynamic" ];
 
-  # Exactly what `zig build install` reads. Being an allow-list, it also
-  # excludes .git, .zig-cache, zig-out, zig-pkg, .devenv*, .direnv and
-  # result/result-*, so no local build state reaches the source hash. Bare
-  # paths: lib.fileset coerces a path to one file or to a directory's whole
-  # closure and exports no `file` or `path` constructor.
+  # Allowlist the source files for the Nix derivation.
   sourceFiles = lib.fileset.unions [
     ./build.zig
     ./build.zig.zon
@@ -39,8 +25,7 @@ let
     ./zig
     ./tests.zig
     ./smoke.zig
-    # build.zig imports runtime/graph.zig while it configures, and the install
-    # step builds runtime/misuse.zig; tests.zig embeds the oracle in testdata/.
+    # Runtime sources configure the build; tests embed the oracle from testdata.
     ./runtime
     ./testdata
     ./INCHI-1-SRC/INCHI_BASE/src
@@ -72,32 +57,23 @@ stdenv.mkDerivation {
 
   nativeBuildInputs = [ zig ];
 
-  # Install-only: the SDK's own build graph is the sole builder. dontInstall is
-  # deliberately NOT set — it would disable the phase below. The Zig hook's
-  # default flags are disabled so `zig build` runs once, with the flags named.
+  # Disable Nix's default phases; installPhase runs the Zig build.
   dontConfigure = true;
   dontBuild = true;
   dontSetZigDefaultFlags = true;
   dontAddPrefix = true;
   dontCheck = true;
-  # Without this the Zig setup hook substitutes its own `zig build test` for the
-  # check phase, which is a second, differently-flagged build of the same tree.
+  # Disable the hook's duplicate test build.
   dontUseZigCheck = true;
 
   installPhase = ''
     runHook preInstall
 
-    # Both caches under the Nix-provided TMPDIR: the sandbox has no writable
-    # HOME, and nothing is written inside the unpacked source tree.
+    # Keep Zig caches under the Nix sandbox's writable TMPDIR.
     export ZIG_GLOBAL_CACHE_DIR="$TMPDIR/zig-global-cache"
     export ZIG_LOCAL_CACHE_DIR="$TMPDIR/zig-local-cache"
 
-    # One optimize selection, chosen here: a packaged library is ReleaseSafe.
-    # C flags, the source list, header configuration, the native artifact and
-    # the .pc all come from build.zig; this file adds none.
-    # The job-count expansion below is written with the Nix escape for a
-    # literal dollar-brace; a bare one inside a Nix indented string would be
-    # parsed as Nix interpolation rather than as shell.
+    # Build ReleaseSafe; Nix indented strings escape shell variable interpolation.
     zig build install \
       -j"''${NIX_BUILD_CORES:-1}" \
       -Doptimize=ReleaseSafe \
@@ -121,10 +97,6 @@ stdenv.mkDerivation {
       bin/misuse — fork-authored — is the only executable.
     '';
     homepage = "https://github.com/IUPAC-InChI/InChI";
-    # The dominant grant only. Not single-licensed: sha2.c/.h add a coupling
-    # condition, stb_sprintf.h is MIT-or-Unlicense, tbb/tbbmalloc_proxy.h is
-    # Apache-2.0 and travels uncompiled, and this fork's own files are under
-    # LicenseRef-InChI-MIT-Conditional. See $out/share/doc/inchi/NOTICE.md.
     license = lib.licenses.mit;
     licenseFile = "LICENSE";
     platforms = lib.platforms.unix ++ lib.platforms.windows;

@@ -1,41 +1,6 @@
 //! SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
 //! See FORK-LICENSE.md for the full grant and the owner authorization behind it.
-//
-//! Behavioural tests for the runtime loader.
-//!
-//! ## What these tests are about
-//!
-//! The loader's contract is mostly about what happens *between* calls: a
-//! failure that publishes nothing, a retry that is the caller's to make, a
-//! second request for the provider already in use, a dozen threads arriving at
-//! one attempt. None of that is observable from a single call, which is why
-//! this is a separate test root instead of more cases in `tests.zig`.
-//!
-//! ## Real providers, no mock
-//!
-//! Every provider here is a real library that exists on the machine:
-//!
-//!   * `INCHI_TEST_PROVIDER` -- a shared object exporting the entry points
-//!     `translate.h` over `inchi_api.h` declares. Nothing imitates the
-//!     library's behaviour, and the answers checked below are PubChem's
-//!     published identifiers and InChIKeys.
-//!   * `INCHI_TEST_ALIEN` -- a loadable object that is not libinchi at all. It
-//!     opens, and it exports none of those entry points, which is exactly the
-//!     situation `MissingSymbol` exists for.
-//!   * a path under a directory that does not exist, for `OpenFailed`. That one
-//!     needs no configuration, because no machine has that directory.
-//!
-//! Nothing is skipped when a variable is missing. In a runtime-loading build a
-//! test that cannot name a provider has nothing to say, and passing anyway
-//! would mean nothing at all.
-//!
-//! ## Order is part of the contract
-//!
-//! There is one loader per process and no unload, so the first successful load
-//! is a one-way door. The tests that need a module which has not loaded yet are
-//! above the first successful load, and the test runner runs them in source
-//! order. That is a property of the contract under test rather than a
-//! convenience: any consumer with this lifecycle has the same constraint.
+//! Runtime-loader contract tests requiring provider paths.
 
 const std = @import("std");
 const inchi = @import("inchi");
@@ -51,36 +16,22 @@ comptime {
     }
 }
 
-/// A shared object exporting the entry points `inchi_api.h` declares.
+/// Environment variable naming a real InChI provider.
 const provider_variable = "INCHI_TEST_PROVIDER";
-/// A loadable object that is not libinchi: it opens, and exports none of them.
+/// Environment variable naming a loadable object without InChI exports.
 const alien_variable = "INCHI_TEST_ALIEN";
 
-/// No machine has this directory, which is what makes it a real `OpenFailed`
-/// rather than a guess about what might be missing.
 const absent_path = "/inchi-no-such-directory/libinchi.so";
 
-/// What a thread stores when it comes back from a load.
 const Outcome = inchi.LoadError!void;
 
-/// What can be wrong with this file's own expectations.
 const Problem = error{
-    /// The loader was ready but reported no request, which the contract says
-    /// cannot happen.
     NoRetainedRequest,
-    /// A request that should have been different from the one in use turned out
-    /// to be byte-identical, so the test would not be testing anything.
     RequestsWereEqual,
-    /// The loaded provider produced an identifier for a molecule whose
-    /// published one is known, and they differ.
     ProviderDisagreesWithPubChem,
 };
 
-/// Copy an environment variable into `buffer`, or return null when it is unset.
-///
-/// The value is copied rather than returned as a slice into the environment,
-/// because the loader compares a request against its own retained copy and a
-/// caller may hand it any bytes it likes.
+/// Copy an environment value into caller storage, or return null if missing or too long.
 fn envCopy(buffer: []u8, key: []const u8) ?[]const u8 {
     const value = testing.environ.getAlloc(testing.allocator, key) catch return null;
     defer testing.allocator.free(value);
@@ -106,7 +57,6 @@ fn alienPath(buffer: []u8) []const u8 {
     );
 }
 
-/// One thread's whole job: load one path and store what came back.
 fn contendOn(path: []const u8, outcome: *Outcome) void {
     outcome.* = inchi.load(.{ .path = path });
 }
@@ -123,8 +73,7 @@ test "an empty request is refused before the platform is called" {
 }
 
 test "a request longer than the loader will remember is refused" {
-    // The loader keeps its own copy of the request and refuses one that does
-    // not fit, because a truncated path is a different path.
+    // Refuse truncation because it could load a different provider.
     var buffer: [64 * 1024]u8 = undefined;
     @memset(&buffer, 'x');
     try testing.expectError(
@@ -143,8 +92,6 @@ test "a provider that exports none of the header's symbols is refused" {
     var alien: [4096]u8 = undefined;
     const path = alienPath(&alien);
     try testing.expectError(error.MissingSymbol, inchi.load(.{ .path = path }));
-    // The candidate opened. Nothing about it reached the table, so there is
-    // still no provider and no request.
     try testing.expect(inchi.loadedSource() == null);
 }
 
@@ -160,9 +107,6 @@ test "threads contending on one failing attempt all get that attempt's result" {
     }
     for (threads) |thread| thread.join();
 
-    // Every one of them waited for the single attempt and received its error.
-    // None of them started a competing attempt and none of them saw a different
-    // outcome: that is what receiving that attempt's result means.
     for (outcomes) |outcome| {
         try testing.expectError(error.MissingSymbol, outcome);
     }
@@ -196,15 +140,12 @@ test "threads contending after a load all succeed" {
     }
     for (threads) |thread| thread.join();
 
-    // The loader is published here, so these take the lock-free path. They
-    // still have to agree with each other and with the table.
+    // Exercise the published-table fast path after load.
     for (outcomes) |outcome| try outcome;
     try testing.expectEqualStrings(path, try retainedPath());
 }
 
 test "a different request is refused once a provider is in use" {
-    // Both spellings are refused, and neither reaches the platform: the
-    // provider in use stays in use.
     try testing.expectError(
         error.ProviderMismatch,
         inchi.load(.{ .system = "libinchi-not-installed.so" }),
@@ -220,8 +161,7 @@ test "a different request is refused once a provider is in use" {
 test "a request that is not the same byte sequence is a different request" {
     var provider: [4096]u8 = undefined;
     const path = providerPath(&provider);
-    // The same file named differently. There is no normalization anywhere in
-    // the loader, so this is a different request and is refused.
+    // Paths are compared byte-for-byte, without normalization.
     var decorated: [4200]u8 = undefined;
     const longer = try std.fmt.bufPrint(&decorated, "./{s}", .{path});
     if (std.mem.eql(u8, longer, path)) return error.RequestsWereEqual;
@@ -229,16 +169,10 @@ test "a request that is not the same byte sequence is a different request" {
 }
 
 test "the loaded library reproduces PubChem's published identifier and key" {
-    // Independent known answers, the same ones `tests.zig` reads out of
-    // `testdata/pubchem_known_answers.tsv`. They are not derived by running
-    // this library, so a provider that answers differently fails here rather
-    // than agreeing with itself.
+    // Expected values are independent published PubChem results.
     const cases = [_]struct {
-        /// The element symbols, in the order PubChem's formula lists them, and
-        /// the ordinary implicit-hydrogen count for each. One atom per entry.
         elements: []const []const u8,
         hydrogens: []const i8,
-        /// CH3-CH2-OH needs the bonds; the other two are single atoms.
         bonds: []const [2]usize,
         inchi: [:0]const u8,
         key: [:0]const u8,

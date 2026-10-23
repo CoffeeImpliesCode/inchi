@@ -1,84 +1,39 @@
 // SPDX-License-Identifier: LicenseRef-InChI-MIT-Conditional
-// See FORK-LICENSE.md for the full grant and the owner authorization behind it.
+// See FORK-LICENSE.md for grant terms.
 
 .{
-    // This is the default name used by packages depending on this one.
     .name = .inchi,
-    // Upstream's own full version string, INCHI_BASE/src/bcf_s.h:52:
-    //   #define CURRENT_VER "1.07.5"
-    // Semantic versions cannot hold the leading zero of "1.07", so the package
-    // version is 1.7.5 and build.zig compares it against the pinned release
-    // rather than against that string. There is no inchi_version.h: upstream
-    // has no generated version header at all, so none is invented here.
+    // Upstream 1.07.5 is represented as Zig semantic version 1.7.5.
     .version = "1.7.5",
-    // Identifies this package unambiguously. This fork is new, so the id was
-    // generated for it rather than inherited from an upstream Zig package;
-    // there is no upstream Zig package to be hostile about it. The value is
-    // the one the Zig 0.16.0 compiler reported for `.name = .inchi` with
-    // `.version = "1.7.5"`.
     .fingerprint = 0x5a222f3bcf2e0653, // Changing this has security and trust implications.
     .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        // The translation wrapper. It carries the same TARGET_API_LIB and
-        // COMPILE_ANSI_ONLY macros the C core is compiled with and includes the
-        // complete public API header, which itself includes ixa.h.
+        // C translation wrapper for the public API.
         "translate.h",
-        // The canonical upstream core, exactly where upstream keeps it. These
-        // two directories are the whole compile unit list of
-        // INCHI-1-SRC/INCHI_API/libinchi/src/CMakeLists.txt; nothing else in
-        // INCHI-1-SRC is referenced by that target, and nothing is generated,
-        // downloaded or copied at build time.
+        // Upstream source trees used by the library build.
         "INCHI-1-SRC/INCHI_BASE/src",
         "INCHI-1-SRC/INCHI_API/libinchi/src",
-        // Upstream's own export list for the shared library. build.zig passes
-        // it as the linker's version script for `-Dlinkage=dynamic` on the ELF
-        // targets, the way src/CMakeLists.txt:168-172 and
-        // libinchi/gcc/makefile:62-65 do, so it has to travel in the package.
-        // The file is upstream's, and it is pinned in UPSTREAM.sha256.
+        // Upstream's ELF export list for shared libraries.
         "INCHI-1-SRC/INCHI_API/libinchi/gcc/libinchi.map",
-        // Full Apache-2.0 terms for the carried Intel TBB proxy header.
+        // Apache-2.0 terms for the uncompiled TBB proxy header.
         "INCHI-1-SRC/INCHI_API/tbb/LICENSE",
-        // The Zig facade, the shared molecule builders beside it, the
-        // behavioural tests and the smoke program. `zig` is listed as a
-        // directory, so `zig/molecules.zig` ships with the package even though
-        // `zig/root.zig` does not import it.
         "zig",
-        // The runtime route, listed whole because every file in it is
-        // load-bearing and the package cannot configure without the directory.
-        // `runtime/graph.zig` is `@import`ed by build.zig at configure time, so
-        // it is part of the build graph rather than an optional extra; the
-        // descriptor, the generator, the loader core and `sync.c` are what the
-        // generated dispatch is built from; and the two roots beside them are
-        // built by the `runtime-test` and `misuse` outputs. A `.paths` entry
-        // that listed only graph.zig would produce a package that builds a
-        // linked facade and then fails on the first `-Druntime=true`.
+        // Runtime sources are required at configure time and by runtime tests.
         "runtime",
         "tests.zig",
         "smoke.zig",
-        // cross-test reads this settings-only profile from the package root to
-        // drive `zig build test -Dtarget=TARGET` over the full published
-        // platform matrix. It is Bash, not documentation, so it is listed.
+        // cross-test settings profile.
         "cross-test.profile.sh",
-        // The independent fixture. `tests.zig` reaches it with
-        // `@embedFile("testdata/pubchem_known_answers.tsv")`, and the module
-        // root of a file at the package root is the package root, so a path
-        // entry that omits this directory excludes the oracle from the package
-        // hash while the test still needs it.
+        // Embedded PubChem test oracle.
         "testdata",
-        // The separate consumer package. It is inside this repository so the
-        // dependency it proves is a relative path that resolves without a
-        // network fetch or a registry entry.
+        // Separate path-dependent consumer package.
         "consumer/build.zig",
         "consumer/build.zig.zon",
         "consumer/src/main.zig",
-        // The licence and provenance set. `LICENSE` is upstream's MIT text and
-        // is installed, not only shipped; `FORK-LICENSE.md` is the grant for
-        // every fork-authored file here; `README.upstream.md` holds upstream's
-        // own README bytes, which are not this fork's README and must not be
-        // presented as it.
+        // Licence and provenance records.
         "LICENSE",
         "FORK-LICENSE.md",
         "UPSTREAM.md",
@@ -89,28 +44,9 @@
         "README.md",
         "README.upstream.md",
         "README.zig.md",
-        // The standalone Nix and development-environment definitions. They
-        // consume this package as a source-only derivation and are files in
-        // this repository, so a fetched package carries them with it.
+        // Nix package and development-environment definitions.
         "package.nix",
         "flake.nix",
-        // The committed lock that pins the nixpkgs input `flake.nix` names. It
-        // is a real file in this repository, not a generated one, and it is
-        // not ignored; it pins NixOS/nixpkgs at rev
-        // c7def046b9a883d46974757852106483d741586f with narHash
-        // sha256-6RSEDHIWQtesQKWSu5qRai8L2h4KgCgMEfJHstW99G4=, the same rev
-        // `flake.nix` puts in `inputs.nixpkgs.url`. Shipping `flake.nix`
-        // without it would make every consumer re-resolve nixpkgs and write a
-        // lock into their own copy, which is the one thing a lock exists to
-        // stop.
-        //
-        // `devenv.lock` is deliberately absent from this list: no such file
-        // exists in this repository, and none is invented to fill the slot.
-        // `devenv.yaml` pins its own input by revision, so the shell resolves
-        // without one. `package.nix` is a different axis and is unaffected:
-        // its `lib.fileset` allow-list is exactly what `zig build install`
-        // reads, and the flake frontend has already resolved the locked
-        // inputs before any derivation source is built.
         "flake.lock",
         "devenv.nix",
         "devenv.yaml",
