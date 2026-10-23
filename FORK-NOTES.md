@@ -4,7 +4,7 @@
 
 | File | Change and reason |
 |---|---|
-| `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c` | Replace the build-time and date macros in `HelpCommandLineParms` with `v1.07.5` and `(no build timestamp)`, and reword a comment containing nested `/*`; this stabilizes help output and lets Zig's ReleaseSafe C backend compile the file. |
+| `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c` | Replace the build-time and date macros in `HelpCommandLineParms` with `v1.07.5` and `(no build timestamp)`, and reword a comment containing nested `/*`; this stabilizes help output and lets Zig's safe C backend compile the file. |
 | `INCHI-1-SRC/INCHI_BASE/src/ichicano.c` | Move the `sys/timeb.h` include below `mode.h` and guard it with `COMPILE_ANSI_ONLY`; `mode.h` defines the macro, and the ANSI-only build does not use that header. |
 
 ## Build graph deviations
@@ -16,6 +16,7 @@
 - `-fsys=inchi` translates the installed `inchi_api.h` and resolves the library through pkg-config instead of compiling bundled sources. It cannot be combined with `-Druntime=true`.
 - `-Druntime=true` uses generated dispatch for the facade while still building and installing the C artifact.
 - `test`, `smoke`, `check`, and `consumer` are package build steps. `check` compiles the facade, tests, and smoke program without running target binaries; `consumer` builds the separate consumer package and runs it only when an executor is available.
+- Zig 0.17 hides CLI-supplied `--global-cache-dir` and `--libc-runtimes` from build scripts; the nested consumer uses its own global cache unless `ZIG_GLOBAL_CACHE_DIR` is set, and its local cache lives below the outer local cache.
 - `cross-test.profile.sh` sets only `CROSS_BUILD_STEP=test`; the harness selects targets and executors.
 - `package.nix` supplies the shared Nix derivation. The flake exposes static and shared outputs, with static as default; the development shell provides tools without building the SDK.
 

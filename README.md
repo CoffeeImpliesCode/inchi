@@ -9,7 +9,7 @@ Two upstream C files are patched:
 
 | File | Change | Reason |
 |---|---|---|
-| `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c` | Replaces build-date and build-time banner values with the pinned source tag and a fixed timestamp string; fixes a nested-comment delimiter. | Stable help output and compatibility with Zig's ReleaseSafe C backend. |
+| `INCHI-1-SRC/INCHI_BASE/src/ichiparm.c` | Replaces build-date and build-time banner values with the pinned source tag and a fixed timestamp string; fixes a nested-comment delimiter. | Stable help output and compatibility with Zig's safe C backend. |
 | `INCHI-1-SRC/INCHI_BASE/src/ichicano.c` | Moves `<sys/timeb.h>` below `mode.h` and guards it with `#ifndef COMPILE_ANSI_ONLY`. | The ANSI-only path does not use that header, which is absent on some target sysroots. |
 
 No other upstream C source is modified. The build compiles all 60 upstream translation units, including IXA. `UPSTREAM.md` records the pin and patch details.

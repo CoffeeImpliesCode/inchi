@@ -208,11 +208,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const linkage_option = b.option(
-        std.builtin.LinkMode,
+        std.lang.LinkMode,
         "linkage",
         "Link the libinchi artifact statically (default) or dynamically",
     );
-    const linkage = linkage_option orelse @as(std.builtin.LinkMode, .static);
+    const linkage = linkage_option orelse @as(std.lang.LinkMode, .static);
     // Link mode for an installed system library.
     const system_linkage = linkage_option orelse .dynamic;
     const use_system = b.systemIntegrationOption("inchi", .{});
@@ -308,7 +308,7 @@ pub fn build(b: *std.Build) void {
     const smoke_step = b.step("smoke", "Run the deterministic smoke program");
     const run_smoke = b.addRunArtifact(smoke_exe);
     smoke_step.dependOn(&run_smoke.step);
-    if (b.args) |args| run_smoke.addArgs(args);
+    run_smoke.addPassthruArgs();
 
     // Runtime tests require a provider and are built only in runtime mode.
     const misuse_exe = b.addExecutable(.{
@@ -370,8 +370,8 @@ fn addTargetCheck(
     step: *std.Build.Step,
     label: []const u8,
     query: std.Target.Query,
-    linkage: std.builtin.LinkMode,
-    optimize: std.builtin.OptimizeMode,
+    linkage: std.lang.LinkMode,
+    optimize: std.lang.Optimize,
     /// Thread the selected dispatch mode into every target check.
     runtime: bool,
 ) void {
@@ -411,7 +411,7 @@ fn addSmokeExecutable(
     b: *std.Build,
     name: []const u8,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     inchi_module: *std.Build.Module,
 ) *std.Build.Step.Compile {
     return b.addExecutable(.{
@@ -428,9 +428,9 @@ fn addSmokeExecutable(
 
 const InchiOptions = struct {
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     /// Kind of artifact this graph builds.
-    linkage: std.builtin.LinkMode,
+    linkage: std.lang.LinkMode,
     /// Select loader dispatch independently of artifact linkage.
     /// Link mode for an installed system library.
     /// Use an installed libinchi instead of the bundled sources.
@@ -438,7 +438,7 @@ const InchiOptions = struct {
     /// Search-path policy for programs that use this facade.
     /// Reuse an existing graph's library, translation, and loader core.
     runtime: bool = false,
-    system_linkage: std.builtin.LinkMode = .dynamic,
+    system_linkage: std.lang.LinkMode = .dynamic,
     use_system: bool,
     register_module: bool,
     loader: Loader = .build_cache,
@@ -660,7 +660,7 @@ fn systemTranslateHeader(b: *std.Build, import_declarations: bool) std.Build.Laz
 fn addPkgConfig(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    linkage: std.builtin.LinkMode,
+    linkage: std.lang.LinkMode,
 ) std.Build.LazyPath {
     const import_flag = if (linkage == .dynamic and isWindowsMsvc(target))
         " -DBUILD_LINK_AS_DLL"
@@ -698,13 +698,13 @@ fn parseTriple(b: *std.Build, triple: []const u8) std.Target.Query {
 }
 
 /// Run the consumer package as a nested Zig build with matching options.
-/// Forward executor and cache settings so both builds make the same decisions.
+/// Forward target, linkage, runtime, cache and executor settings.
 fn runConsumer(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     use_system: bool,
-    linkage: std.builtin.LinkMode,
+    linkage: std.lang.LinkMode,
     runtime: bool,
 ) *std.Build.Step.Run {
     const query = target.query;
@@ -718,76 +718,29 @@ fn runConsumer(
     const run = b.addSystemCommand(&.{ b.graph.zig_exe, "build" });
     run.setName("consumer package");
     run.setCwd(b.path(consumer_dir));
-    run.addArg(if (hostCanExecute(b, target)) "run" else "install");
+    run.addArg("run");
     run.addArg(b.fmt("-Dtarget={s}", .{triple}));
     run.addArg(b.fmt("-Dcpu={s}", .{cpu}));
     run.addArg(b.fmt("-Doptimize={s}", .{@tagName(optimize)}));
-
     run.addArg(b.fmt("-Dlinkage={s}", .{@tagName(linkage)}));
-
     run.addArg(b.fmt("-Druntime={}", .{runtime}));
-
     run.addArg(if (use_system) "-fsys=inchi" else "-fno-sys=inchi");
 
-    // Forward the executor settings used by this build.
-    if (b.enable_darling) run.addArg("-fdarling");
-    if (b.enable_qemu) run.addArg("-fqemu");
-    if (b.enable_rosetta) run.addArg("-frosetta");
-    if (b.enable_wasmtime) run.addArg("-fwasmtime");
-    if (b.enable_wine) run.addArg("-fwine");
-    if (b.libc_runtimes_dir) |runtimes| run.addArgs(&.{ "--libc-runtimes", runtimes });
+    // Forward executor settings without reading configure-time arguments.
+    run.addThirdPartyEnabledArgDarling(.{ .enabled = "-fdarling", .disabled = "-fno-darling" });
+    run.addThirdPartyEnabledArgQemu(.{ .enabled = "-fqemu", .disabled = "-fno-qemu" });
+    run.addThirdPartyEnabledArgRosetta(.{ .enabled = "-frosetta", .disabled = "-fno-rosetta" });
+    run.addThirdPartyEnabledArgWasmtime(.{ .enabled = "-fwasmtime", .disabled = "-fno-wasmtime" });
+    run.addThirdPartyEnabledArgWine(.{ .enabled = "-fwine", .disabled = "-fno-wine" });
 
     run.addArg("-j8");
     run.addArgs(&.{ "--summary", "all" });
-    // Give the nested build its own cache directory.
-    if (b.cache_root.path) |cache| {
-        run.addArg("--cache-dir");
-        run.addArg(b.fmt("{s}/consumer", .{cache}));
-    }
-    if (b.graph.global_cache_root.path) |global_cache| {
-        run.addArg("--global-cache-dir");
-        run.addArg(global_cache);
-    }
-    // Resolve a caller's relative prefix against the outer build root.
-    const default_prefix = b.build_root.join(b.allocator, &.{"zig-out"}) catch @panic("OOM");
-    if (!std.mem.eql(u8, b.install_prefix, default_prefix)) {
-        const prefix = if (std.fs.path.isAbsolute(b.install_prefix))
-            b.install_prefix
-        else
-            b.pathJoin(&.{ b.graph.cache.cwd, b.install_prefix });
-        run.addArg("--prefix");
-        run.addArg(prefix);
-    }
+    // Keep the nested cache under the outer build's local cache.
+    run.addArg("--cache-dir");
+    run.addDirectoryArg2(std.Build.LazyPath.cache_root.path(b, "consumer"), .{});
     // Forward program arguments after `--`.
-    if (b.args) |args| {
-        run.addArg("--");
-        run.addArgs(args);
-    }
+    run.addArg("--");
+    run.addPassthruArgs();
     run.has_side_effects = true;
     return run;
-}
-
-/// Check whether the host has an enabled executor for the target.
-/// GNU-libc QEMU runs need `libc_runtimes_dir`.
-fn hostCanExecute(b: *std.Build, target: std.Build.ResolvedTarget) bool {
-    const host = &b.graph.host.result;
-    const candidate = &target.result;
-    const options: std.zig.system.GetExternalExecutorOptions = .{
-        .allow_darling = b.enable_darling,
-        .allow_qemu = b.enable_qemu,
-        .allow_wasmtime = b.enable_wasmtime,
-        .allow_wine = b.enable_wine,
-        // Match Run's libc/runtime requirement for QEMU.
-        .qemu_fixes_dl = candidate.isGnuLibC() and b.libc_runtimes_dir != null,
-        .link_libc = true,
-    };
-    return switch (std.zig.system.getExternalExecutor(b.graph.io, host, candidate, options)) {
-        .native, .rosetta => true,
-        // GNU-libc QEMU needs libc runtimes or Run fails instead of skipping.
-        .qemu => !candidate.isGnuLibC() or b.libc_runtimes_dir != null,
-        // Only executors enabled above reach this arm.
-        .wine, .wasmtime, .darling => true,
-        // No dynamic loader or enabled executor exists.
-        .bad_dl, .bad_os_or_cpu => false,
-    };
 }

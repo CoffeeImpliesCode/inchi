@@ -1,6 +1,9 @@
 # Changelog
 
-- The nested consumer forwards user arguments, linkage, system mode and non-default install prefixes; it runs when the target executor is available and builds otherwise.
+- Port to Zig 0.17.0.
+- The nested consumer forwards arguments, target settings, linkage and system mode; it runs when an executor is available and builds otherwise.
+- The nested consumer builds unexecutable targets without installing them.
+- The nested consumer does not forward CLI-only global-cache or libc-runtime overrides that Zig 0.17 hides from build scripts.
 - `KeyVerdict` preserves native values: `standard = 0`, `non_standard = -1`, `invalid_length = 1`, `invalid_layout = 2`, `invalid_version = 3`.
 - Molfile read and generation failures map to `.rejected`; the other named `MolfileStatus` values remain part of the upstream code set.
 - Devenv build and install scripts use this package directory, an explicit cache, bounded jobs and an explicit install prefix.
@@ -17,4 +20,4 @@
 - The six borrowed C output strings retain their NUL terminators in the Zig types.
 - The two upstream C patches fix a nested-comment delimiter, make the usage banner reproducible and guard `<sys/timeb.h>` after `mode.h` defines `COMPILE_ANSI_ONLY`.
 - The package builds and installs upstream's full `libinchi` target, including the six IXA translation units.
-- A Zig 0.16 package and `inchi` module expose a facade over upstream InChI 1.07.5.
+- A Zig 0.17.0 package and `inchi` module expose a facade over upstream InChI 1.07.5.

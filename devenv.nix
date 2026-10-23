@@ -5,7 +5,7 @@
 { pkgs, lib, ... }:
 
 let
-  zig = pkgs.zig_0_16;
+  zig = pkgs.zig_0_17;
   inchi = linkage: pkgs.callPackage ./package.nix { inherit zig linkage; };
 
   # Resolve this checkout independently of the caller's working directory.

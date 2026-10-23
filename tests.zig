@@ -300,7 +300,10 @@ test "the structure upstream rebuilds from L-alanine regenerates L-alanine" {
 
     const stereo = structure.stereo0d();
     try testing.expectEqual(@as(usize, 1), stereo.len);
-    try testing.expectEqual(inchi.StereoType0D.tetrahedral, @as(inchi.StereoType0D, @enumFromInt(stereo[0].type)));
+    try testing.expectEqual(
+        inchi.StereoType0D.tetrahedral,
+        @as(inchi.StereoType0D, @fromBackingInt(@intCast(stereo[0].type))),
+    );
 
     // The alpha carbon's four neighbors include the explicit hydrogen.
     const centre: usize = @intCast(stereo[0].central_atom);
@@ -432,7 +435,7 @@ test "a non-standard identifier is accepted by the general reader and refused by
     const non_standard_verdict = inchi.checkKey(non_standard_key.keyText());
     try testing.expectEqual(inchi.KeyVerdict.non_standard, non_standard_verdict);
     // Preserve the upstream numeric verdict, not only its enum tag.
-    try testing.expectEqual(@as(c_int, -1), @intFromEnum(non_standard_verdict));
+    try testing.expectEqual(@as(c_int, -1), @backingInt(non_standard_verdict));
 }
 
 test "malformed identifiers and keys are reported as upstream reports them" {
@@ -448,17 +451,17 @@ test "malformed identifiers and keys are reported as upstream reports them" {
 
     const standard_verdict = inchi.checkKey(compound("water").key);
     try testing.expectEqual(inchi.KeyVerdict.standard, standard_verdict);
-    try testing.expectEqual(@as(c_int, 0), @intFromEnum(standard_verdict));
+    try testing.expectEqual(@as(c_int, 0), @backingInt(standard_verdict));
     const length_verdict = inchi.checkKey("XLYOFNOQVPJJNP-UHFFFAOYSA");
     try testing.expectEqual(inchi.KeyVerdict.invalid_length, length_verdict);
-    try testing.expectEqual(@as(c_int, 1), @intFromEnum(length_verdict));
+    try testing.expectEqual(@as(c_int, 1), @backingInt(length_verdict));
     const layout_verdict = inchi.checkKey("XLYOFNOQVPJJNP-UHFFFAOYSA-n");
     try testing.expectEqual(inchi.KeyVerdict.invalid_layout, layout_verdict);
-    try testing.expectEqual(@as(c_int, 2), @intFromEnum(layout_verdict));
+    try testing.expectEqual(@as(c_int, 2), @backingInt(layout_verdict));
     // The final character is the protonation flag, so this key has an invalid version, not layout.
     const version_verdict = inchi.checkKey("XLYOFNOQVPJJNP-UHFFFAOYSS-B");
     try testing.expectEqual(inchi.KeyVerdict.invalid_version, version_verdict);
-    try testing.expectEqual(@as(c_int, 3), @intFromEnum(version_verdict));
+    try testing.expectEqual(@as(c_int, 3), @backingInt(version_verdict));
 
     // The general reader reports no data for malformed input.
     var refused = try inchi.fromIdentifier.full("InChI=1SX", null);

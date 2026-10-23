@@ -6,7 +6,7 @@
     // Upstream 1.07.5 is represented as Zig semantic version 1.7.5.
     .version = "1.7.5",
     .fingerprint = 0x5a222f3bcf2e0653, // Changing this has security and trust implications.
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",

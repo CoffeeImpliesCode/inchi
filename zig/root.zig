@@ -578,8 +578,8 @@ pub fn tetrahedralStereo(
     var result: Stereo0D = std.mem.zeroes(Stereo0D);
     result.neighbor = neighbours;
     result.central_atom = central;
-    result.type = @intFromEnum(StereoType0D.tetrahedral);
-    result.parity = @intFromEnum(parity);
+    result.type = @backingInt(StereoType0D.tetrahedral);
+    result.parity = @backingInt(parity);
     return result;
 }
 
@@ -589,8 +589,8 @@ pub fn doubleBondStereo(x: i16, a: i16, b: i16, y: i16, parity: StereoParity0D) 
     var result: Stereo0D = std.mem.zeroes(Stereo0D);
     result.neighbor = .{ x, a, b, y };
     result.central_atom = no_atom;
-    result.type = @intFromEnum(StereoType0D.double_bond);
-    result.parity = @intFromEnum(parity);
+    result.type = @backingInt(StereoType0D.double_bond);
+    result.parity = @backingInt(parity);
     return result;
 }
 
@@ -714,7 +714,7 @@ pub fn fromMolfile(text: [:0]const u8, options: ?[:0]const u8) Error!MolfileOutp
     var raw: c.inchi_Output = std.mem.zeroes(c.inchi_Output);
     const moltext: [*c]const u8 = text.ptr;
     const code = c.MakeINCHIFromMolfileText(moltext, optionsPointer(options), &raw);
-    return .{ .raw = raw, .status = @enumFromInt(code) };
+    return .{ .raw = raw, .status = @fromBackingInt(@intCast(code)) };
 }
 
 /// Classifies an InChI string; strict mode also regenerates it and may return `conversion_failed`.
@@ -730,7 +730,7 @@ pub fn checkIdentifier(text: [:0]const u8, strict: bool) IdentifierVerdict {
         c.INCHI_INVALID_VERSION => .invalid_version,
         c.INCHI_INVALID_LAYOUT => .invalid_layout,
         c.INCHI_FAIL_I2I => .conversion_failed,
-        else => @enumFromInt(code),
+        else => @fromBackingInt(@intCast(code)),
     };
 }
 
@@ -744,7 +744,7 @@ pub fn checkKey(text: [:0]const u8) KeyVerdict {
         c.INCHIKEY_INVALID_LENGTH => .invalid_length,
         c.INCHIKEY_INVALID_LAYOUT => .invalid_layout,
         c.INCHIKEY_INVALID_VERSION => .invalid_version,
-        else => @enumFromInt(code),
+        else => @fromBackingInt(@intCast(code)),
     };
 }
 
@@ -834,7 +834,7 @@ fn identifierInput(text: [:0]const u8, options: ?[:0]const u8) c.inchi_InputINCH
 
 fn statusFrom(code: c_int) Status {
     // Preserve unnamed codes through the non-exhaustive `Status` enum.
-    return @enumFromInt(code);
+    return @fromBackingInt(@intCast(code));
 }
 
 fn keyError(code: c_int) KeyError {
@@ -875,8 +875,8 @@ fn countOutOfRange(count: i16) bool {
 fn append(target: *Atom, neighbor: usize, kind: BondType, stereo2d: BondStereo2D) void {
     const slot = used(target.num_bonds);
     target.neighbor[slot] = @intCast(neighbor);
-    target.bond_type[slot] = @intFromEnum(kind);
-    target.bond_stereo[slot] = @intFromEnum(stereo2d);
+    target.bond_type[slot] = @backingInt(kind);
+    target.bond_stereo[slot] = @backingInt(stereo2d);
     target.num_bonds = @intCast(slot + 1);
 }
 

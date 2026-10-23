@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     // Forward dependency linkage options so the nested build uses this mode.
     const linkage = b.option(
-        std.builtin.LinkMode,
+        std.lang.LinkMode,
         "linkage",
         "Link the libinchi artifact statically (default) or dynamically",
     ) orelse .static;
@@ -43,7 +43,9 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(exe);
 
     const run_exe = b.addRunArtifact(exe);
-    if (b.args) |args| run_exe.addArgs(args);
+    // Compile foreign targets even when no executor can run them.
+    run_exe.failing_to_execute_foreign_is_an_error = false;
+    run_exe.addPassthruArgs();
     const run_step = b.step("run", "Build and run the consumer program");
     run_step.dependOn(&run_exe.step);
 
