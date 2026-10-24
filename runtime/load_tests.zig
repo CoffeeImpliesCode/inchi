@@ -3,6 +3,7 @@
 //! Runtime-loader contract tests requiring provider paths.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const inchi = @import("inchi");
 const testing = std.testing;
 
@@ -21,7 +22,10 @@ const provider_variable = "INCHI_TEST_PROVIDER";
 /// Environment variable naming a loadable object without InChI exports.
 const alien_variable = "INCHI_TEST_ALIEN";
 
-const absent_path = "/inchi-no-such-directory/libinchi.so";
+const absent_path = if (builtin.os.tag == .windows)
+    "C:\\inchi-no-such-directory\\inchi.dll"
+else
+    "/inchi-no-such-directory/libinchi.so";
 
 const Outcome = inchi.LoadError!void;
 
@@ -152,7 +156,7 @@ test "a different request is refused once a provider is in use" {
     );
     try testing.expectError(
         error.ProviderMismatch,
-        inchi.load(.{ .path = "/somewhere/else/libinchi.so" }),
+        inchi.load(.{ .path = absent_path }),
     );
     const before = try retainedPath();
     try testing.expect(before.len != 0);
@@ -163,7 +167,14 @@ test "a request that is not the same byte sequence is a different request" {
     const path = providerPath(&provider);
     // Paths are compared byte-for-byte, without normalization.
     var decorated: [4200]u8 = undefined;
-    const longer = try std.fmt.bufPrint(&decorated, "./{s}", .{path});
+    const basename = std.fs.path.basename(path);
+    const directory_len = path.len - basename.len;
+    const longer = try std.fmt.bufPrint(
+        &decorated,
+        "{s}.{c}{s}",
+        .{ path[0..directory_len], std.fs.path.sep, basename },
+    );
+    try testing.expect(std.fs.path.isAbsolute(longer));
     if (std.mem.eql(u8, longer, path)) return error.RequestsWereEqual;
     try testing.expectError(error.ProviderMismatch, inchi.load(.{ .path = longer }));
 }

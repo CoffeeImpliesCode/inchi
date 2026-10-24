@@ -1,5 +1,6 @@
 # Changelog
 
+- Runtime-loader tests keep byte-distinct provider paths absolute and use Windows absolute paths for missing-provider cases.
 - Port to Zig 0.17.0.
 - The nested consumer forwards arguments, target settings, linkage and system mode; it runs when an executor is available and builds otherwise.
 - The nested consumer builds unexecutable targets without installing them.

@@ -33,6 +33,8 @@ Build options:
 
 System mode and runtime loading cannot be combined. Runtime loading requires an OS dynamic loader; it is unavailable on WASI, Emscripten, and freestanding targets.
 
+`zig build runtime-test -Druntime=true` requires `INCHI_TEST_PROVIDER`, an absolute path to a real InChI shared library, and `INCHI_TEST_ALIEN`, an absolute path to a loadable object without InChI exports.
+
 ## Support matrix
 
 | Route | Targets and scope |
