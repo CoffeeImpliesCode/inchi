@@ -50,10 +50,8 @@ The last recorded matrix executed 20 targets: 12 passed and 8 failed in the big-
 
 Add the package to `build.zig.zon`:
 
-```zig
-.dependencies = .{
-    .inchi = .{ .path = "../inchi" },
-},
+```sh
+zig fetch --save git+https://github.com/CoffeeImpliesCode/inchi#v1.7.5
 ```
 
 Import its module in `build.zig`:
